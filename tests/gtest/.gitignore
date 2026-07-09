@@ -1,0 +1,18 @@
+# --- Build Artifacts ---
+.cache/
+build/
+bin/
+lib/
+out/
+*.so
+*.o
+*.a
+compile_commands.json
+
+# --- IDEs ---
+.vs/
+*.swp
+*.suo
+.idea/
+.DS_Store
+Thumbs.db
