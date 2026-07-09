@@ -1,0 +1,9 @@
+{
+  "features": {
+    "ghcr.io/devcontainers-extra/features/cmake:1": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/devcontainers-extra/features/cmake@sha256:86e25502f6b1213a68d88e4e55c969eba0b5016b9666d216ab65f5047808bc90",
+      "integrity": "sha256:86e25502f6b1213a68d88e4e55c969eba0b5016b9666d216ab65f5047808bc90"
+    }
+  }
+}
