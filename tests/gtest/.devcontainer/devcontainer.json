@@ -1,0 +1,15 @@
+{
+    "name": "FRR bgpd Google Test Environment",
+    "dockerComposeFile": "compose.yml",
+    "service": "gtest-dev",
+    "workspaceFolder": "/gtest",
+    "shutdownAction": "stopCompose",
+    "remoteUser": "frr",
+    "updateRemoteUserUID": true,
+    "features": {
+        "ghcr.io/devcontainers-extra/features/cmake:1": {
+            "version": "latest"
+        }
+    },
+    "postCreateCommand": "sudo apt-get update && sudo apt-get install -y clang llvm lld lldb ninja-build"
+}

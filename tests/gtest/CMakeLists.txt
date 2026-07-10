@@ -23,7 +23,7 @@ FetchContent_MakeAvailable(googletest)
 
 FetchContent_Declare(
     json
-    GIT_REPOSITORY  git@github.com:nlohmann/json.git
+    GIT_REPOSITORY  https://github.com/nlohmann/json.git
     GIT_TAG         55f93686c01528224f448c19128836e7df245f72 # release-3.12.0
     GIT_SHALLOW     TRUE
     GIT_PROGRESS    TRUE
@@ -33,7 +33,6 @@ FetchContent_MakeAvailable(json)
 add_executable(model_tests "src/main.cpp" "src/test_bgp_ls_edge_update.cpp")
 target_include_directories(model_tests PUBLIC "{CMAKE_SOURCE_DIR}/include")
 target_link_libraries(model_tests PRIVATE GTest::gtest_main nlohmann_json::nlohmann_json)
-
 
 include(GoogleTest)
 gtest_discover_tests(model_tests)

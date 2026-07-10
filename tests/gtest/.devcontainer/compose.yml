@@ -1,0 +1,22 @@
+services:
+  gtest-dev:
+    image: frr-ubuntu22:latest
+    
+    build:
+      context: ../../..
+      dockerfile: docker/ubuntu-ci/Dockerfile
+    
+    volumes:
+      - ..:/gtest
+    
+    # enable ptrace-based debugger
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    ports:
+      - "1234:1234"
+      - "8888:8888"
+
+    # overrides default command so things don't shut down after process ends
+    command: sleep infinity
