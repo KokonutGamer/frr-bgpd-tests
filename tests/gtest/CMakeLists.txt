@@ -85,3 +85,4 @@ target_include_directories(model_tests
 )
 
 target_compile_options(model_tests PRIVATE -DHAVE_CONFIG_H)
+target_compile_definitions(model_tests PRIVATE "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/edge_update_formatted.json\"")
