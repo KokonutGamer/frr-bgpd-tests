@@ -13,7 +13,7 @@ using addr_t = std::string;
 namespace Model {
 struct BgpLsNode {
   uint32_t asn;
-  addr_t igp_router_id;
+  sys_id_t igp_router_id;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsNode, asn, igp_router_id)
 
@@ -40,12 +40,12 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 struct LinkStateEdge {
   uint32_t asn;
   LinkStateNodeId source_node;
-  LinkStateNodeId dest_node;
+  LinkStateNodeId destination_node;
   addr_t source;
   addr_t destination;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node, dest_node,
-                                   source, destination)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
+                                   destination_node, source, destination)
 
 struct LinkStateAttributes {
   bool valid;
@@ -76,10 +76,18 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BApiLinkStateUpdate, event, remote, data)
 struct BgpLsLinkState {
   uint32_t asn;
   std::vector<LinkStateEdge> ted;
-  std::vector<BgpRibEntry> rib;
-  prefix_t next_id;
+  std::vector<BgpLsLinkNlri> rib;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLinkState, asn, ted, rib, next_id)
+inline void to_json(nlohmann::json& j, const BgpLsLinkState& ls) {
+  j = nlohmann::json{
+      {"asn", ls.asn}, {"linkstate_ted", ls.ted}, {"rib_nlri", ls.rib}};
+}
+
+inline void from_json(const nlohmann::json& j, BgpLsLinkState& ls) {
+  j.at("asn").get_to(ls.asn);
+  j.at("linkstate_ted").get_to(ls.ted);
+  j.at("rib_nlri").get_to(ls.rib);
+}
 
 struct TestCase {
   int test_id;
@@ -89,8 +97,24 @@ struct TestCase {
   BgpLsLinkState final_state;
   int response;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TestCase, test_id, op, initial_state,
-                                   api_param, final_state, response)
+
+inline void to_json(nlohmann::json& j, const TestCase& tc) {
+  j = nlohmann::json{{"TestId", tc.test_id},
+                     {"Op", tc.op},
+                     {"InitialState", tc.initial_state},
+                     {"ApiParam", tc.api_param},
+                     {"FinalState", tc.final_state},
+                     {"Response", tc.response}};
+}
+
+inline void from_json(const nlohmann::json& j, TestCase& tc) {
+  j.at("TestId").get_to(tc.test_id);
+  j.at("Op").get_to(tc.op);
+  j.at("InitialState").get_to(tc.initial_state);
+  j.at("ApiParam").get_to(tc.api_param);
+  j.at("FinalState").get_to(tc.final_state);
+  j.at("Response").get_to(tc.response);
+}
 
 }  // namespace Model
 
