@@ -11,7 +11,7 @@ typedef struct bgp_path_info bgp_path_info_t;
 
 void bridge_init_bgp(void);
 
-void bgp_exit(int);
+void bridge_clean_bgp(void);
 
 #ifdef __cplusplus
 }

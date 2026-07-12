@@ -66,6 +66,7 @@ void sighup(void);
 void sigint(void);
 void sigusr1(void);
 
+static void bgp_exit(int);
 static void bgp_vrf_terminate(void);
 
 static struct frr_signal_t bgp_signals[] = {
@@ -114,7 +115,7 @@ FRR_NORETURN void sigint(void) {
 
 void sigusr1(void) { zlog_rotate(); }
 
-void bgp_exit(int status) {
+static void bgp_exit(int status) {
   struct bgp *bgp, *bgp_default, *bgp_evpn;
   struct listnode *node, *nnode;
 
@@ -330,9 +331,11 @@ void bridge_init_bgp(void) {
   strncpy(frr_runstatedir, test_dir, 255);
 
   int bgp_port = BGP_PORT_DEFAULT;
+  struct list *addresses = list_new();
   int instance = 0;
   int buffer_size = BGP_SOCKET_SNDBUF_SIZE;
-  struct list *addresses = list_new();
+  char *address;
+  struct listnode *node;
   bool v6_with_v4_nexthops = false;
 
   addresses->cmp = (int (*)(void *, void *))strcmp;
@@ -361,17 +364,34 @@ void bridge_init_bgp(void) {
                    // source, see bgpd/bgp_main.c)
 
   bgp_init((unsigned short)instance);
+
+  if (list_isempty(bm->addresses)) {
+    snprintf(bgpd_di.startinfo, sizeof(bgpd_di.startinfo), ", bgp@<all>:%d",
+             bm->port);
+  } else {
+    for (ALL_LIST_ELEMENTS_RO(bm->addresses, node, address))
+      snprintf(bgpd_di.startinfo + strlen(bgpd_di.startinfo),
+               sizeof(bgpd_di.startinfo) - strlen(bgpd_di.startinfo),
+               ", bgp@%s:%d", address, bm->port);
+  }
+
   bgp_if_init();
 
-  frr_config_fork();  // TODO check to see if needed for unit tests
+  frr_config_fork();
   bgp_pthreads_run();
 }
 
-int bridge_get_route_count(bgp_t *bgp_instance) {
-  // Safely interact with the struct internals here,
-  // since the C compiler knows how to read them.
-  if (!bgp_instance) return 0;
+void bridge_clean_bgp(void) {
+  assert(bm->terminating == false);
+  bm->terminating = true;
 
-  // return bgp_instance->some_internal_count;
-  return 0;
+  bfd_protocol_integration_set_shutdown(true);
+
+  bgp_terminate();
+
+  bgp_exit(0);
+
+  peer_connection_fifo_fini(&bm->connection_fifo);
+  event_cancel(&bm->e_process_packet);
+  pthread_mutex_destroy(&bm->peer_connection_mtx);
 }

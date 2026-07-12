@@ -75,7 +75,7 @@ target_link_libraries(model_tests
         crypt
         m
         gcov
-        lua5.3z
+        lua5.3
 )
 target_include_directories(model_tests
     PUBLIC
