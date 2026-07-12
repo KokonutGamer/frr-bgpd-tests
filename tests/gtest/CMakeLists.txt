@@ -68,15 +68,14 @@ target_link_libraries(model_tests
         ${LIBRFP}
         -Wl,--end-group
 
-        # --- FRR System Dependencies ---
         json-c
         sqlite3
         yang
         cap
         crypt
-        m         # Math library, often needed by yang/frr
-        gcov      # Required because FRR was built with --coverage
-        lua5.3       # Depending on your OS, this might need to be lua5.3 or lua5.4
+        m
+        gcov
+        lua5.3z
 )
 target_include_directories(model_tests
     PUBLIC

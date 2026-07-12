@@ -8,9 +8,7 @@ namespace Model {
 
 BgpdEnvironment::BgpdEnvironment() { bridge_init_bgp(); }
 
-BgpdEnvironment::~BgpdEnvironment() {
-  // clean up bgpd memory
-}
+BgpdEnvironment::~BgpdEnvironment() { bgp_exit(0); }
 
 void BgpdEnvironment::SetUp() {
   // TODO ifstream check

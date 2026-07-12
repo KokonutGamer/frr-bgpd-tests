@@ -25,6 +25,8 @@
 #include "libfrr.h"
 #include "ns.h"
 #include "libagentx.h"
+#include <string.h>
+#include <sys/stat.h>
 
 #include "bgpd/bgpd.h"
 #include "bgpd/bgp_attr.h"
@@ -64,7 +66,6 @@ void sighup(void);
 void sigint(void);
 void sigusr1(void);
 
-static void bgp_exit(int);
 static void bgp_vrf_terminate(void);
 
 static struct frr_signal_t bgp_signals[] = {
@@ -86,21 +87,8 @@ static struct frr_signal_t bgp_signals[] = {
     },
 };
 
-static zebra_capabilities_t _caps_p[] = {ZCAP_BIND, ZCAP_NET_RAW,
-                                         ZCAP_NET_ADMIN, ZCAP_SYS_ADMIN};
-
-struct zebra_privs_t bgpd_privs = {
-#if defined(FRR_USER) && defined(FRR_GROUP)
-    .user = FRR_USER,
-    .group = FRR_GROUP,
-#endif
-#ifdef VTY_GROUP
-    .vty_group = VTY_GROUP,
-#endif
-    .caps_p = _caps_p,
-    .cap_num_p = array_size(_caps_p),
-    .cap_num_i = 0,
-};
+// mimics skip runas CLI option
+struct zebra_privs_t bgpd_privs = {0};
 
 static struct frr_daemon_info bgpd_di;
 
@@ -126,7 +114,7 @@ FRR_NORETURN void sigint(void) {
 
 void sigusr1(void) { zlog_rotate(); }
 
-static FRR_NORETURN void bgp_exit(int status) {
+void bgp_exit(int status) {
   struct bgp *bgp, *bgp_default, *bgp_evpn;
   struct listnode *node, *nnode;
 
@@ -212,7 +200,6 @@ static FRR_NORETURN void bgp_exit(int status) {
   memset(bm, 0, sizeof(*bm));
 
   frr_fini();
-  exit(status);
 }
 
 static int bgp_vrf_new(struct vrf *vrf) {
@@ -331,15 +318,17 @@ static const struct frr_yang_module_info *const bgpd_yang_modules[] = {
 
 FRR_DAEMON_INFO(bgpd, BGP, .vty_port = BGP_VTY_PORT,
                 .proghelp = "Implementation of the BGP routing protocol.",
-
                 .signals = bgp_signals, .n_signals = array_size(bgp_signals),
-
-                .privs = &bgpd_privs,
-
-                .yang_modules = bgpd_yang_modules,
+                .privs = &bgpd_privs, .yang_modules = bgpd_yang_modules,
                 .n_yang_modules = array_size(bgpd_yang_modules), );
 
 void bridge_init_bgp(void) {
+  const char *test_dir = "/tmp/frr";
+  mkdir(test_dir, 0777);
+
+  strncpy(frr_libstatedir, test_dir, 255);
+  strncpy(frr_runstatedir, test_dir, 255);
+
   int bgp_port = BGP_PORT_DEFAULT;
   int instance = 0;
   int buffer_size = BGP_SOCKET_SNDBUF_SIZE;
@@ -348,9 +337,11 @@ void bridge_init_bgp(void) {
 
   addresses->cmp = (int (*)(void *, void *))strcmp;
 
-  int argc = 1;
-  char *argv[] = {(char *)"bgpd", NULL};
+  int argc = 4;
+  char *argv[] = {"bgpd", "-i", "/tmp/frr_test/bgpd.pid", NULL};
   frr_preinit(&bgpd_di, argc, argv);
+
+  bgpd_di.limit_fds = 1000;  // mimics setting the --limit-fds option
 
   // bm is a a global bgp_master struct defined in bgpd/bgpd.h
   // we initialize it with bgp_master_init
@@ -366,8 +357,8 @@ void bridge_init_bgp(void) {
 
   bgp_error_init();
   libagentx_init();
-  // bgp_vrf_init(); TODO check if this is actually needed (static method in
-  // source, see bgpd/bgp_main.c)
+  bgp_vrf_init();  // TODO check if this is actually needed (static method in
+                   // source, see bgpd/bgp_main.c)
 
   bgp_init((unsigned short)instance);
   bgp_if_init();
