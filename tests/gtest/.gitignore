@@ -17,3 +17,7 @@ compile_commands.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# --- Misc ---
+tests/*.json
+!tests/edge_update_formatted.json

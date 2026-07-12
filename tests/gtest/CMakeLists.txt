@@ -87,4 +87,13 @@ target_include_directories(model_tests
         "/home/frr/frr/lib"
 )
 
-target_compile_options(model_tests PRIVATE -DHAVE_CONFIG_H)
+target_compile_options(model_tests PRIVATE
+    -DHAVE_CONFIG_H
+    -Wno-missing-declarations       # ignores empty structs (lib/mgmt_msg_native.h, struct mgmt_msg_header)
+    -Wno-extern-c-compat            # ignores empty struct size differences between C and C++ (lib/mgmt_msg_native.h,
+                                    # struct mgmt_msg_cfg_reply, struct mgmt_msg_cfg_apply_req, struct
+                                    # mgmt_msg_cfg_apply_reply)
+)
+target_compile_definitions(model_tests PRIVATE
+    "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/edge_update_formatted.json\""
+)
