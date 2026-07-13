@@ -32,17 +32,6 @@ class BgpdEnvironment : public ::testing::Environment {
    * TODO document
    */
   void TearDown() override;
-
- private:
-  /**
-   * TODO document
-   */
-  int currTestId;
-
-  /**
-   * TODO document
-   */
-  std::vector<TestCase> testCases;
 };
 }  // namespace Model
 

@@ -11,6 +11,7 @@ using prefix_t = std::string;
 using addr_t = std::string;
 
 namespace Model {
+
 struct BgpLsNode {
   uint32_t asn;
   sys_id_t igp_router_id;
@@ -115,6 +116,8 @@ inline void from_json(const nlohmann::json& j, TestCase& tc) {
   j.at("FinalState").get_to(tc.final_state);
   j.at("Response").get_to(tc.response);
 }
+
+inline std::vector<TestCase> testCases;
 
 }  // namespace Model
 

@@ -1,9 +1,5 @@
 #include "bgpd_env.h"
 
-#include <filesystem>
-#include <fstream>
-#include <nlohmann/json.hpp>
-
 extern "C" {
 #include "frr_bridge.h"
 }
@@ -15,19 +11,16 @@ BgpdEnvironment::BgpdEnvironment() { bridge_init_bgp(); }
 BgpdEnvironment::~BgpdEnvironment() { bridge_clean_bgp(); }
 
 void BgpdEnvironment::SetUp() {
-  std::filesystem::path jsonPath = std::filesystem::canonical(MODEL_JSON_PATH);
+  // TODO perhaps do some checks on bgpd before testing
+  // think of a "liveness" check - to see if bgpd is working
 
-  ASSERT_TRUE(std::filesystem::exists(jsonPath));
-
-  std::ifstream raw(jsonPath);
-
-  nlohmann::json data = nlohmann::json::parse(raw);
-  this->testCases = data.get<std::vector<TestCase>>();
-  this->currTestId = 1;
+  // we can also set some configurations here; ensure that bgpd is self-
+  // contained, not listening through other ports
 }
 
 void BgpdEnvironment::TearDown() {
   // TODO check bgpd
+  // perhaps have each test clean up the LS TED and RIB
 }
 
 }  // namespace Model
