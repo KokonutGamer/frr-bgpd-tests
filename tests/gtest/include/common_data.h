@@ -12,12 +12,18 @@ using addr_t = std::string;
 
 namespace Model {
 
+/**
+ * TODO document
+ */
 struct BgpLsNode {
   uint32_t asn;
   sys_id_t igp_router_id;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsNode, asn, igp_router_id)
 
+/**
+ * TODO document
+ */
 struct BgpLsLink {
   addr_t interface;
   addr_t neighbor;
@@ -25,6 +31,9 @@ struct BgpLsLink {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLink, interface, neighbor, remote_asn)
 
+/**
+ * TODO document
+ */
 struct BgpLsLinkNlri {
   BgpLsNode source;
   BgpLsNode destination;
@@ -32,12 +41,18 @@ struct BgpLsLinkNlri {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLinkNlri, source, destination, link)
 
+/**
+ * TODO document
+ */
 struct LinkStateNodeId {
   sys_id_t iso_sys_id;
   uint8_t level;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 
+/**
+ * TODO document
+ */
 struct LinkStateEdge {
   uint32_t asn;
   LinkStateNodeId source_node;
@@ -48,6 +63,9 @@ struct LinkStateEdge {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
                                    destination_node, source, destination)
 
+/**
+ * TODO document
+ */
 struct LinkStateAttributes {
   bool valid;
   LinkStateNodeId adv;
@@ -59,14 +77,23 @@ struct LinkStateAttributes {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateAttributes, valid, adv, name,
                                    metric, local, remote)
 
+/**
+ * TODO document
+ */
 struct BgpRibEntry {
   prefix_t synth_prefix;
   BgpLsLinkNlri ls_nlri;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpRibEntry, synth_prefix, ls_nlri)
 
+/**
+ * TODO document
+ */
 enum class BEvent : uint8_t { UNDEF = 0, SYNC, ADD, UPDATE, DELETE };
 
+/**
+ * TODO document
+ */
 struct BApiLinkStateUpdate {
   BEvent event;
   LinkStateNodeId remote;
@@ -74,6 +101,9 @@ struct BApiLinkStateUpdate {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BApiLinkStateUpdate, event, remote, data)
 
+/**
+ * TODO document
+ */
 struct BgpLsLinkState {
   uint32_t asn;
   std::vector<LinkStateEdge> ted;
@@ -90,6 +120,9 @@ inline void from_json(const nlohmann::json& j, BgpLsLinkState& ls) {
   j.at("rib_nlri").get_to(ls.rib);
 }
 
+/**
+ * TODO document
+ */
 struct TestCase {
   int test_id;
   std::string op;  // currently always "api_bgp_ls_edge_update"
@@ -117,6 +150,10 @@ inline void from_json(const nlohmann::json& j, TestCase& tc) {
   j.at("Response").get_to(tc.response);
 }
 
+/**
+ * Global variable within the Model namespace holding all TestCases for using in
+ * value-parameterized tests.
+ */
 inline std::vector<TestCase> testCases;
 
 }  // namespace Model

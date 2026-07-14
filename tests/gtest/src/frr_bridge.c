@@ -50,6 +50,8 @@
 #include "bgpd/bgp_nhg.h"
 #include "bgpd/bgp_routemap_nb.h"
 #include "bgpd/bgp_community_alias.h"
+
+#include "bgpd/bgp_ls_ted.h"
 // clang-format on
 
 DEFINE_HOOK(bgp_hook_config_write_vrf, (struct vty * vty, struct vrf *vrf),
@@ -394,4 +396,8 @@ void bridge_clean_bgp(void) {
   peer_connection_fifo_fini(&bm->connection_fifo);
   event_cancel(&bm->e_process_packet);
   pthread_mutex_destroy(&bm->peer_connection_mtx);
+}
+
+void bridge_send_message(struct stream *s, uint8_t msg_type) {
+  bgp_ls_process_linkstate_message(s, msg_type);
 }
