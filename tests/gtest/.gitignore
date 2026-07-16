@@ -18,6 +18,9 @@ compile_commands.json
 .DS_Store
 Thumbs.db
 
+# --- Logs ---
+logs/
+
 # --- Misc ---
 tests/*.json
 !tests/edge_update_formatted.json
