@@ -23,6 +23,7 @@
 
 #include "lib/stream.h"
 #include "lib/zclient.h"
+#include "sbuf.h"
 
 #define ISIS_SYS_ID_LEN 6
 
@@ -34,9 +35,7 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
     // TODO
   }
 
-  void TearDown() override {
-    // TODO
-  }
+  void TearDown() override { bridge_clear_bgp_ls_ted(); }
 
   int sysid2buff(uint8_t* buff, const char* dotted) {
     int len = 0;
@@ -130,12 +129,56 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   attr->standard.remote6 = remote6;
   SET_FLAG(attr->flags, LS_ATTR_NEIGH_ADDR6);
 
-  struct ls_message msg = {.event = static_cast<uint8_t>(tc.api_param.event),
-                           .type = LS_MSG_TYPE_ATTRIBUTES,
-                           .remote_id = remote_node_id,
-                           .data = {.attr = attr}};
+  struct ls_node* remote_node = ls_node_new(remote_node_id, any, remote6);
+  struct ls_node* adv_node = ls_node_new(adv_node_id, any, local6);
 
   struct stream* bgpd_stream = stream_new(ZEBRA_MAX_PACKET_SIZ);
+
+  struct ls_message remote_msg = {
+      .event = static_cast<uint8_t>(tc.api_param.event),
+      .type = LS_MSG_TYPE_NODE,
+      .data = {.node = remote_node}};
+
+  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
+  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
+  stream_putc(bgpd_stream, LS_MSG_TYPE_NODE);
+
+  // from ls_format_node (lib/link_state.c, lines 1532-1580)
+  stream_put(bgpd_stream, &remote_node->adv, sizeof(struct ls_node_id));
+  stream_putw(bgpd_stream, remote_node->flags);
+
+  stream_put(bgpd_stream, &remote_node->router_id6, IPV6_MAX_BYTELEN);
+
+  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
+
+  stream_reset(bgpd_stream);
+
+  struct ls_message adv_msg = {
+      .event = static_cast<uint8_t>(tc.api_param.event),
+      .type = LS_MSG_TYPE_NODE,
+      .data = {.node = adv_node}};
+
+  // same as remote_node
+
+  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
+  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
+  stream_putc(bgpd_stream, LS_MSG_TYPE_NODE);
+
+  // from ls_format_node (lib/link_state.c, lines 1532-1580)
+  stream_put(bgpd_stream, &adv_node->adv, sizeof(struct ls_node_id));
+  stream_putw(bgpd_stream, adv_node->flags);
+
+  stream_put(bgpd_stream, &adv_node->router_id6, IPV6_MAX_BYTELEN);
+
+  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
+
+  stream_reset(bgpd_stream);
+
+  struct ls_message edge_msg = {
+      .event = static_cast<uint8_t>(tc.api_param.event),
+      .type = LS_MSG_TYPE_ATTRIBUTES,
+      .remote_id = remote_node_id,
+      .data = {.attr = attr}};
 
   // see lib/link_state.c, lines 1836-1842 (entry point)
 
@@ -166,11 +209,22 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Act
   bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
 
+  // Debug
+  struct sbuf sbuf;
+  sbuf_init(&sbuf, NULL, 0);
+
+  bridge_show_ted(&sbuf);
+  std::cout << sbuf_buf(&sbuf) << std::endl;
+
   // Assert
   // TODO implement assertion to check if the TED has two-way direction
   // installed, as well as the RIB
   ASSERT_NE(tc.test_id, 0);
 
+  // Clean
+  sbuf_free(&sbuf);
+  ls_node_del(adv_node);
+  ls_node_del(remote_node);
   ls_attributes_del(attr);
   stream_free(bgpd_stream);
 }

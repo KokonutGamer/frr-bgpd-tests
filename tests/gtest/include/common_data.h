@@ -187,6 +187,19 @@ inline void from_json(const nlohmann::json& j, TestCase& tc) {
  */
 inline std::vector<TestCase> testCases;
 
+/**
+ * @brief Prints information about `TestCase` instances.
+ *
+ * Google Test relies on this function to print information about test runs. If
+ * this function isn't defined, Valgrind will complain about "uninitialized
+ * values" and "conditional jumps relying on uninitialized values". Note that
+ * `AbslStringify` is an alternative function that Google Test uses in the same
+ * manner.
+ */
+inline void PrintTo(const TestCase& tc, std::ostream* os) {
+  *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << " }";
+}
+
 }  // namespace Model
 
 #endif  // COMMON_DATA_H

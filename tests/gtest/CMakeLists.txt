@@ -56,6 +56,7 @@ add_executable(model_tests
     "src/test_bgp_ls_edge_update.cpp" 
 
     "src/frr_bridge.c"
+    "src/sbuf.c"                        # used to print logs opposed to lib/sbuf.h
 )
 
 set_target_properties(model_tests PROPERTIES POSITION_INDEPENDENT_CODE OFF)
