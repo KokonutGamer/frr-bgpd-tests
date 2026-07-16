@@ -7,17 +7,21 @@
 #include <cstdint>
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <set>
 
 #include "common_data.h"
 #include "frr_bridge.h"
 
 // some FRR headers (mainly lib/ headers) already include guards for C++
 
+/**
+ * Hacky solution to compiling with C++ (keyword delete cannot be used as a
+ * variable name); see https://stackoverflow.com/a/25647229
+ */
 #define delete to_delete
 #include "lib/link_state.h"
 #undef delete
 
+#include "lib/sbuf.h"
 #include "lib/stream.h"
 #include "lib/zclient.h"
 
@@ -44,7 +48,7 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
    * TODO finish documentation
    *
    * Copied from source (I'd rather not statically link against libisis.a since
-   * multiple different symbols need to be defined when doing so).
+   * multiple different symbols require definition when doing so).
    */
   int sysid2buff(uint8_t* buff, const char* dotted) {
     int len = 0;
@@ -94,29 +98,29 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // TODO model may have IS-IS level as a free variable to test for IS-IS
   // interoperability between level 1 and level 2 nodes (specifically 1/2
   // nodes); check this again in the future
-  struct ls_node_id remote_node = {.origin = ls_origin::ISIS_L1,
-                                   .id = {.iso = {.level = 1}}};
-  int ret = sysid2buff(remote_node.id.iso.sys_id,
+  struct ls_node_id remote_node_id = {.origin = ls_origin::ISIS_L1,
+                                      .id = {.iso = {.level = 1}}};
+  int ret = sysid2buff(remote_node_id.id.iso.sys_id,
                        tc.api_param.remote.iso_sys_id.c_str());
   ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
       << "[sys_id]: remote node ID must be a valid ISO system identifier.";
 
   // TODO same as remote node - see above
-  struct ls_node_id adv_node = {.origin = ls_origin::ISIS_L1,
-                                .id = {.iso = {.level = 1}}};
-  ret = sysid2buff(adv_node.id.iso.sys_id,
+  struct ls_node_id adv_node_id = {.origin = ls_origin::ISIS_L1,
+                                   .id = {.iso = {.level = 1}}};
+  ret = sysid2buff(adv_node_id.id.iso.sys_id,
                    tc.api_param.data.adv.iso_sys_id.c_str());
   ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
       << "[sys_id]: advertising node ID must be a valid ISO system identifier.";
 
-  struct in_addr local = {.s_addr = INADDR_ANY};
+  struct in_addr any = {.s_addr = INADDR_ANY};
   struct in6_addr local6;
   uint32_t local_id = 0;
   ret = inet_pton(AF_INET6, tc.api_param.data.local.c_str(), (void*)&local6);
 
   ASSERT_EQ(1, ret) << "[ipv6]: local address must be a valid IPv6 address.";
   struct ls_attributes* attr =
-      ls_attributes_new(adv_node, local, local6, local_id);
+      ls_attributes_new(adv_node_id, any, local6, local_id);
 
   if (attr == nullptr) {
     GTEST_SKIP() << "[ls_attr]: test " << tc.test_id
@@ -138,12 +142,61 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   attr->standard.remote6 = remote6;
   SET_FLAG(attr->flags, LS_ATTR_NEIGH_ADDR6);
 
-  struct ls_message msg = {.event = static_cast<uint8_t>(tc.api_param.event),
-                           .type = LS_MSG_TYPE_ATTRIBUTES,
-                           .remote_id = remote_node,
-                           .data = {.attr = attr}};
+  struct ls_node* remote_node = ls_node_new(remote_node_id, any, remote6);
+
+  // TODO send ls_message with remote_node
+
+  struct ls_node* adv_node = ls_node_new(adv_node_id, any, local6);
+
+  // TODO send ls_message with adv_node
 
   struct stream* bgpd_stream = stream_new(ZEBRA_MAX_PACKET_SIZ);
+
+  struct ls_message remote_msg = {
+      .event = static_cast<uint8_t>(tc.api_param.event),
+      .type = LS_MSG_TYPE_NODE,
+      .data = {.node = remote_node}};
+
+  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
+  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
+  stream_putc(bgpd_stream, LS_MSG_TYPE_NODE);
+
+  // from ls_format_node (lib/link_state.c, lines 1532-1580)
+  stream_put(bgpd_stream, &remote_node->adv, sizeof(struct ls_node_id));
+  stream_putw(bgpd_stream, remote_node->flags);
+
+  stream_put(bgpd_stream, &remote_node->router_id6, IPV6_MAX_BYTELEN);
+
+  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
+
+  stream_reset(bgpd_stream);
+
+  struct ls_message adv_msg = {
+      .event = static_cast<uint8_t>(tc.api_param.event),
+      .type = LS_MSG_TYPE_NODE,
+      .data = {.node = adv_node}};
+
+  // same as remote_node
+
+  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
+  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
+  stream_putc(bgpd_stream, LS_MSG_TYPE_NODE);
+
+  // from ls_format_node (lib/link_state.c, lines 1532-1580)
+  stream_put(bgpd_stream, &adv_node->adv, sizeof(struct ls_node_id));
+  stream_putw(bgpd_stream, adv_node->flags);
+
+  stream_put(bgpd_stream, &adv_node->router_id6, IPV6_MAX_BYTELEN);
+
+  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
+
+  stream_reset(bgpd_stream);
+
+  struct ls_message edge_msg = {
+      .event = static_cast<uint8_t>(tc.api_param.event),
+      .type = LS_MSG_TYPE_ATTRIBUTES,
+      .remote_id = remote_node_id,
+      .data = {.attr = attr}};
 
   // see lib/link_state.c, lines 1836-1842 (entry point)
 
@@ -151,7 +204,7 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
   stream_putc(bgpd_stream, LS_MSG_TYPE_ATTRIBUTES);
 
-  stream_put(bgpd_stream, (void*)&remote_node, sizeof(struct ls_node_id));
+  stream_put(bgpd_stream, (void*)&remote_node_id, sizeof(struct ls_node_id));
 
   // from ls_format_attributes (lib/link_state.c, lines 1582-1725)
   size_t len;
@@ -171,16 +224,27 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   stream_put(bgpd_stream, &attr->standard.local6, IPV6_MAX_BYTELEN);
   stream_put(bgpd_stream, &attr->standard.remote6, IPV6_MAX_BYTELEN);
 
-  stream_putw_at(bgpd_stream, 0, stream_get_endp(bgpd_stream));
+  // this line was in the lib/link_state.c implementation, but is probably not
+  // needed
+  // stream_putw_at(bgpd_stream, 0, stream_get_endp(bgpd_stream));
 
   // Act
   bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
+
+  // Debug
+  struct sbuf* sbuf;
+  bridge_show_ted(sbuf);
+  std::cout << sbuf_buf(sbuf) << std::endl;
 
   // Assert
   // TODO act first; this assertion will check if the TED has two-way direction
   // installed, as well as the RIB
   ASSERT_NE(tc.test_id, 0);
 
+  // Clean
+  sbuf_free(sbuf);
+  ls_node_del(adv_node);
+  ls_node_del(remote_node);
   ls_attributes_del(attr);
   stream_free(bgpd_stream);
 }

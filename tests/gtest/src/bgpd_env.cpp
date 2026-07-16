@@ -6,9 +6,15 @@ extern "C" {
 
 namespace Model {
 
-BgpdEnvironment::BgpdEnvironment() { bridge_init_bgp(); }
+BgpdEnvironment::BgpdEnvironment() {
+  bridge_shallow_init_bgp();
+  // struct bgp* bgp_inst = bgp_get_default();
+  // bgp_ls_init(bgp_inst);
+}
 
-BgpdEnvironment::~BgpdEnvironment() { bridge_clean_bgp(); }
+BgpdEnvironment::~BgpdEnvironment() {
+  bridge_clean_bgp();
+}
 
 void BgpdEnvironment::SetUp() {
   // TODO perhaps do some checks on bgpd before testing

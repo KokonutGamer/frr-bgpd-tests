@@ -3,7 +3,9 @@ cmake_minimum_required(VERSION 3.23)
 project(FrrBgpdTests LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}")
@@ -53,6 +55,7 @@ add_executable(model_tests
     "src/test_bgp_ls_edge_update.cpp" 
     "src/bgpd_env.cpp"
     "src/frr_bridge.c"
+    "src/sbuf.c"
 )
 
 set_target_properties(model_tests PROPERTIES POSITION_INDEPENDENT_CODE OFF)

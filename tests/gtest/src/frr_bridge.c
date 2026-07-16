@@ -51,8 +51,16 @@
 #include "bgpd/bgp_routemap_nb.h"
 #include "bgpd/bgp_community_alias.h"
 
+#include "bgpd/bgp_ls.h"
 #include "bgpd/bgp_ls_ted.h"
 // clang-format on
+
+/**
+ * Initialized later. We just need this as a static variable to perform bgp
+ * operations.
+ */
+static struct bgp *bgp = NULL;
+static as_t asn = 100;
 
 DEFINE_HOOK(bgp_hook_config_write_vrf, (struct vty * vty, struct vrf *vrf),
             (vty, vrf));
@@ -381,7 +389,22 @@ void bridge_init_bgp(void) {
 
   frr_config_fork();
   bgp_pthreads_run();
+
+  bgp_get(&bgp, &asn, NULL, BGP_INSTANCE_TYPE_DEFAULT, NULL, ASNOTATION_PLAIN);
 }
+
+void bridge_shallow_init_bgp(void) {
+  qobj_init();
+  bgp_attr_init();
+  struct event_loop *master = event_master_create(NULL);
+  bgp_master_init(master, BGP_SOCKET_SNDBUF_SIZE, list_new());
+  vrf_init(NULL, NULL, NULL, NULL);
+  bgp_option_set(BGP_OPT_NO_LISTEN);
+
+  bgp_get(&bgp, &asn, NULL, BGP_INSTANCE_TYPE_DEFAULT, NULL, ASNOTATION_PLAIN);
+}
+
+void bridge_clear_bgp_ls_ted(void) { bgp_ls_withdraw_ted(bgp); }
 
 void bridge_clean_bgp(void) {
   assert(bm->terminating == false);
@@ -398,6 +421,80 @@ void bridge_clean_bgp(void) {
   pthread_mutex_destroy(&bm->peer_connection_mtx);
 }
 
+void bridge_shallow_clean_bgp(void) {
+  assert(bm->terminating == false);
+  bm->terminating = true;
+
+  bfd_protocol_integration_set_shutdown(true);
+
+  bgp_terminate();
+}
+
 void bridge_send_message(struct stream *s, uint8_t msg_type) {
   bgp_ls_process_linkstate_message(s, msg_type);
+}
+
+static const char *ls_node_id_to_text(struct ls_node_id lnid, char *str,
+                                      size_t size) {
+  if (lnid.origin == ISIS_L1 || lnid.origin == ISIS_L2)
+    snprintfrr(str, size, "%pSY", lnid.id.iso.sys_id);
+  else
+    snprintfrr(str, size, "%pI4", &lnid.id.ip.addr);
+
+  return str;
+}
+
+static const char *edge_key_to_text(struct ls_edge_key key) {
+#define FORMAT_BUF_COUNT 4
+  static char buf_ring[FORMAT_BUF_COUNT][INET6_BUFSIZ];
+  static size_t cur_buf = 0;
+  char *rv;
+
+  rv = buf_ring[cur_buf];
+  cur_buf = (cur_buf + 1) % FORMAT_BUF_COUNT;
+
+  switch (key.family) {
+    case AF_INET:
+      snprintfrr(rv, INET6_BUFSIZ, "%pI4", &key.k.addr);
+      break;
+    case AF_INET6:
+      snprintfrr(rv, INET6_BUFSIZ, "%pI6", &key.k.addr6);
+      break;
+    case AF_LOCAL:
+      snprintfrr(rv, INET6_BUFSIZ, "%" PRIu64, key.k.link_id);
+      break;
+    default:
+      snprintfrr(rv, INET6_BUFSIZ, "(Unknown)");
+      break;
+  }
+
+  return rv;
+}
+
+static const char *const origin2txt[] = {"Unknown", "ISIS_L1", "ISIS_L2",
+                                         "OSPFv2",  "Direct",  "Static"};
+
+void bridge_show_ted(struct sbuf *sbuf) {
+  struct ls_edge *edge;
+  frr_each(edges, &bgp->ls_info->ted->edges, edge) {
+    if (!edge) {
+      continue;
+    }
+
+    // from ls_show_edge_vty (lib/link_state.c, lines 2463-2637)
+
+    struct ls_attributes *attr = edge->attributes;
+    char buf[INET6_BUFSIZ];
+
+    sbuf_init(sbuf, NULL, 0);
+    sbuf_push(sbuf, 2, "Edge (%s): ", edge_key_to_text(edge->key));
+    sbuf_push(sbuf, 0, "%pI6", &attr->standard.local6);
+    ls_node_id_to_text(attr->adv, buf, INET6_BUFSIZ);
+    sbuf_push(sbuf, 0, "\tAdv. Vertex: %s", buf);
+    sbuf_push(sbuf, 0, "\tMetric: %u", attr->metric);
+    sbuf_push(sbuf, 4, "Origin: %s\n", origin2txt[attr->adv.origin]);
+
+    sbuf_push(sbuf, 4, "Local IPv6 address: %pI6\n", &attr->standard.local6);
+    sbuf_push(sbuf, 4, "Remote IPv6 address: %pI6\n", &attr->standard.remote6);
+  }
 }
