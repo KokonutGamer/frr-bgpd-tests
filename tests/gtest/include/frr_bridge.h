@@ -2,19 +2,15 @@
 #define FRR_BRIDGE_H
 
 #include "lib/stream.h"
-#include "sbuf.h" // modified version of lib/sbuf.h
+#include "sbuf.h"  // modified version of lib/sbuf.h
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-void bridge_init_bgp(void);
-
 void bridge_shallow_init_bgp(void);
 
 void bridge_clear_bgp_ls_ted(void);
-
-void bridge_clean_bgp(void);
 
 void bridge_shallow_clean_bgp(void);
 
