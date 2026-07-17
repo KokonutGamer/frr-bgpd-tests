@@ -156,6 +156,13 @@ inline void from_json(const nlohmann::json& j, TestCase& tc) {
  */
 inline std::vector<TestCase> testCases;
 
+/**
+ * TODO document
+ */
+inline void PrintTo(const TestCase& tc, std::ostream* os) {
+  *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << " }";
+}
+
 }  // namespace Model
 
 #endif  // COMMON_DATA_H

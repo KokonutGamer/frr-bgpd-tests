@@ -486,7 +486,6 @@ void bridge_show_ted(struct sbuf *sbuf) {
     struct ls_attributes *attr = edge->attributes;
     char buf[INET6_BUFSIZ];
 
-    sbuf_init(sbuf, NULL, 0);
     sbuf_push(sbuf, 2, "Edge (%s): ", edge_key_to_text(edge->key));
     sbuf_push(sbuf, 0, "%pI6", &attr->standard.local6);
     ls_node_id_to_text(attr->adv, buf, INET6_BUFSIZ);

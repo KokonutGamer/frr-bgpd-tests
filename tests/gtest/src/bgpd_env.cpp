@@ -13,7 +13,7 @@ BgpdEnvironment::BgpdEnvironment() {
 }
 
 BgpdEnvironment::~BgpdEnvironment() {
-  bridge_clean_bgp();
+  // bridge_clean_bgp();
 }
 
 void BgpdEnvironment::SetUp() {

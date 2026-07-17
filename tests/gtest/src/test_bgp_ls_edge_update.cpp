@@ -21,9 +21,9 @@
 #include "lib/link_state.h"
 #undef delete
 
-#include "lib/sbuf.h"
 #include "lib/stream.h"
 #include "lib/zclient.h"
+#include "sbuf.h"
 
 #define ISIS_SYS_ID_LEN 6
 
@@ -42,6 +42,7 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
   void TearDown() override {
     // TODO check bgpd
     // perhaps have each test clean up the LS TED and RIB
+    bridge_clear_bgp_ls_ted();
   }
 
   /**
@@ -232,17 +233,19 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
 
   // Debug
-  struct sbuf* sbuf;
-  bridge_show_ted(sbuf);
-  std::cout << sbuf_buf(sbuf) << std::endl;
+  struct sbuf sbuf;
+  sbuf_init(&sbuf, NULL, 0);
+
+  bridge_show_ted(&sbuf);
+  std::cout << sbuf_buf(&sbuf) << std::endl;
 
   // Assert
-  // TODO act first; this assertion will check if the TED has two-way direction
+  // TODO implement assertion to check if the TED has two-way direction
   // installed, as well as the RIB
   ASSERT_NE(tc.test_id, 0);
 
   // Clean
-  sbuf_free(sbuf);
+  sbuf_free(&sbuf);
   ls_node_del(adv_node);
   ls_node_del(remote_node);
   ls_attributes_del(attr);
