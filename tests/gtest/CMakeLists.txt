@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.23)
 
 project(FrrBgpdTests LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 23)              # Google Test recommends latest C++ version
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 11)                # FRR uses C11 for compilation
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}")
@@ -23,6 +23,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+# nlohmann JSON
 FetchContent_Declare(
     json
     GIT_REPOSITORY  https://github.com/nlohmann/json.git
@@ -32,18 +33,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
+# libfrr.a, libbgp.a, and librfp.a grouped (rather not deal with dependency ordering) 
 find_library(LIBFRR
     NAMES libfrr.a
     HINTS /lib
     REQUIRED
 )
-
 find_library(LIBBGP
     NAMES libbgp.a
     HINTS /home/frr/frr/bgpd
     REQUIRED
 )
-
 find_library(LIBRFP
     NAMES librfp.a
     HINTS /home/frr/frr/bgpd/rfp-example/librfp
@@ -55,7 +55,7 @@ add_executable(model_tests
     "src/test_bgp_ls_edge_update.cpp" 
     "src/bgpd_env.cpp"
     "src/frr_bridge.c"
-    "src/sbuf.c"
+    "src/sbuf.c"                        # used to print logs opposed to lib/sbuf.h
 )
 
 set_target_properties(model_tests PROPERTIES POSITION_INDEPENDENT_CODE OFF)
@@ -65,7 +65,7 @@ target_link_libraries(model_tests
         GTest::gtest_main
         nlohmann_json::nlohmann_json
 
-        -Wl,--start-group
+        -Wl,--start-group               # in a group to resolve potential circular dependencies
         ${LIBFRR}
         ${LIBBGP}
         ${LIBRFP}
@@ -87,5 +87,13 @@ target_include_directories(model_tests
         "/home/frr/frr/lib"
 )
 
-target_compile_options(model_tests PRIVATE -DHAVE_CONFIG_H)
-target_compile_definitions(model_tests PRIVATE "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/edge_update_formatted.json\"")
+target_compile_options(model_tests PRIVATE
+    -DHAVE_CONFIG_H
+    -Wno-missing-declarations       # ignores empty structs (lib/mgmt_msg_native.h, struct mgmt_msg_header)
+    -Wno-extern-c-compat            # ignores empty struct size differences between C and C++ (lib/mgmt_msg_native.h,
+                                    # struct mgmt_msg_cfg_reply, struct mgmt_msg_cfg_apply_req, struct
+                                    # mgmt_msg_cfg_apply_reply)
+)
+target_compile_definitions(model_tests PRIVATE
+    "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/edge_update_formatted.json\""
+)
