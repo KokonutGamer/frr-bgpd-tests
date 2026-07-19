@@ -1,14 +1,20 @@
 #include "frr_bridge.h"
 
 // clang-format off
+#include <stdlib.h>
+
 #include <zebra.h>
 
 #include "lib/asn.h"
+#include "lib/bfd.h"
+#include "lib/compiler.h"
 #include "lib/frrevent.h"
-#define UNKNOWN LS_UNKNOWN 
-#include "lib/link_state.h"
-#undef UNKNOWN
+#include "lib/libfrr.h"
 #include "lib/linklist.h"
+#include "lib/log_vty.h"
+#include "lib/northbound.h"
+#include "lib/privs.h"
+#include "lib/sigevent.h"
 #include "lib/typesafe.h"
 #include "lib/version.h"
 #include "lib/vrf.h"
@@ -24,16 +30,25 @@
 // clang-format on
 
 /**
- * Initialized later. We just need this as a static variable to perform bgp
- * operations.
+ * The BGP instance to initialize in bgpd. Note that because this is declared as
+ * static, teardown of this memory isn't necessary as the operating system will
+ * automatically clean this up for us. In Valgrind, the memory pointed to by
+ * this pointer will be considered "still reachable".
  */
 static struct bgp *bgp = NULL;
+
+/**
+ * The Autonomous System number assigned to the BGP instance running in bgpd.
+ */
 static as_t asn = 100;
 
 void sighup(void);
 void sigint(void);
 void sigusr1(void);
 
+/**
+ * Signal handlers for catching signals from the operating system.
+ */
 static struct frr_signal_t bgp_signals[] = {
     {
         .signal = SIGHUP,
@@ -146,6 +161,21 @@ static const char *edge_key_to_text(struct ls_edge_key key) {
 static const char *const origin2txt[] = {"Unknown", "ISIS_L1", "ISIS_L2",
                                          "OSPFv2",  "Direct",  "Static"};
 
+static void edge_to_text(const struct ls_edge *const edge, struct sbuf *sbuf) {
+  struct ls_attributes *attr = edge->attributes;
+  char buf[INET6_BUFSIZ];
+
+  sbuf_push(sbuf, 2, "Edge (%s): ", edge_key_to_text(edge->key));
+  sbuf_push(sbuf, 0, "%pI6", &attr->standard.local6);
+  ls_node_id_to_text(attr->adv, buf, INET6_BUFSIZ);
+  sbuf_push(sbuf, 0, "\tAdv. Vertex: %s", buf);
+  sbuf_push(sbuf, 0, "\tMetric: %u", attr->metric);
+  sbuf_push(sbuf, 4, "Origin: %s\n", origin2txt[attr->adv.origin]);
+
+  sbuf_push(sbuf, 4, "Local IPv6 address: %pI6\n", &attr->standard.local6);
+  sbuf_push(sbuf, 4, "Remote IPv6 address: %pI6\n", &attr->standard.remote6);
+}
+
 void bridge_show_ted(struct sbuf *sbuf) {
   struct ls_edge *edge;
   frr_each(edges, &bgp->ls_info->ted->edges, edge) {
@@ -154,18 +184,26 @@ void bridge_show_ted(struct sbuf *sbuf) {
     }
 
     // from ls_show_edge_vty (lib/link_state.c, lines 2463-2637)
-
-    struct ls_attributes *attr = edge->attributes;
-    char buf[INET6_BUFSIZ];
-
-    sbuf_push(sbuf, 2, "Edge (%s): ", edge_key_to_text(edge->key));
-    sbuf_push(sbuf, 0, "%pI6", &attr->standard.local6);
-    ls_node_id_to_text(attr->adv, buf, INET6_BUFSIZ);
-    sbuf_push(sbuf, 0, "\tAdv. Vertex: %s", buf);
-    sbuf_push(sbuf, 0, "\tMetric: %u", attr->metric);
-    sbuf_push(sbuf, 4, "Origin: %s\n", origin2txt[attr->adv.origin]);
-
-    sbuf_push(sbuf, 4, "Local IPv6 address: %pI6\n", &attr->standard.local6);
-    sbuf_push(sbuf, 4, "Remote IPv6 address: %pI6\n", &attr->standard.remote6);
+    edge_to_text(edge, sbuf);
   }
+}
+
+bool bridge_edge_exists_ted(struct ls_attributes *attr) {
+  struct ls_edge *src_edge = ls_find_edge_by_source(bgp->ls_info->ted, attr);
+  struct sbuf log;
+  sbuf_init(&log, NULL, 0);
+  edge_to_text(src_edge, &log);
+  zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
+
+  sbuf_reset(&log);
+  struct ls_edge *dst_edge =
+      ls_find_edge_by_destination(bgp->ls_info->ted, attr);
+  edge_to_text(dst_edge, &log);
+  zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
+
+  bool res =
+      src_edge != NULL && dst_edge != NULL && ls_edge_same(src_edge, dst_edge);
+  free((void *)src_edge);
+  free((void *)dst_edge);
+  return res;
 }

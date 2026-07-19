@@ -1,17 +1,12 @@
+#include "test_bgp_ls_edge_update.h"
+
 #include <arpa/inet.h>
-#include <gtest/gtest.h>
-#include <netinet/in.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <fstream>
 #include <nlohmann/json.hpp>
-
-#include "common_data.h"
-#include "frr_bridge.h"
-
-// some FRR headers (mainly lib/ headers) already include guards for C++
 
 /**
  * Hacky solution to compiling with C++ (keyword delete cannot be used as a
@@ -21,6 +16,7 @@
 #include "lib/link_state.h"
 #undef delete
 
+#include "frr_bridge.h"
 #include "lib/stream.h"
 #include "lib/zclient.h"
 #include "sbuf.h"
@@ -29,65 +25,104 @@
 
 namespace Model {
 
-class EdgeTest : public testing::TestWithParam<TestCase> {
- protected:
-  void SetUp() override {
-    // TODO perhaps do some checks on bgpd before testing
-    // think of a "liveness" check - to see if bgpd is working
+void EdgeTest::SetUp() {
+  // TODO perhaps do some checks on bgpd before testing
+  // think of a "liveness" check - to see if bgpd is working
 
-    // in addition, for each value-paramterized test, we should ensure the
-    // LS TED and RIB is empty
+  // in addition, for each value-paramterized test, we should ensure the
+  // LS TED and RIB is empty
+}
+
+void EdgeTest::TearDown() {
+  // TODO check bgpd
+  // perhaps have each test clean up the LS TED and RIB
+  bridge_clear_bgp_ls_ted();
+}
+
+/**
+ * TODO finish documentation
+ *
+ * Copied from source (I'd rather not statically link against libisis.a since
+ * multiple different symbols require definition when doing so).
+ */
+int EdgeTest::SysIdToBuffer(uint8_t* buff, const char* dotted) const {
+  // string length must  be 14 characters
+  if (strlen(dotted) != 14) {
+    return 0;
   }
 
-  void TearDown() override {
-    // TODO check bgpd
-    // perhaps have each test clean up the LS TED and RIB
-    bridge_clear_bgp_ls_ted();
-  }
+  int len = 0;
+  const char* pos = dotted;
+  uint8_t number[3];
+  number[2] = '\0';
 
-  /**
-   * TODO finish documentation
-   *
-   * Copied from source (I'd rather not statically link against libisis.a since
-   * multiple different symbols require definition when doing so).
-   */
-  int sysid2buff(uint8_t* buff, const char* dotted) {
-    int len = 0;
-    const char* pos = dotted;
-    uint8_t number[3];
-
-    number[2] = '\0';
-    // surely not a sysid_string if not 14 length
-    if (strlen(dotted) != 14) {
-      return 0;
-    }
-
-    while (len < ISIS_SYS_ID_LEN) {
-      if (*pos == '.') {
-        /* the . is not positioned correctly */
-        if (((pos - dotted) != 4) && ((pos - dotted) != 9)) {
-          len = 0;
-          break;
-        }
-        pos++;
-        continue;
-      }
-      if ((isxdigit((unsigned char)*pos)) &&
-          (isxdigit((unsigned char)*(pos + 1)))) {
-        memcpy(number, pos, 2);
-        pos += 2;
-      } else {
+  while (len < ISIS_SYS_ID_LEN) {
+    if (*pos == '.') {
+      // period not positioned correctly
+      if (((pos - dotted) != 4) && ((pos - dotted) != 9)) {
         len = 0;
         break;
       }
-
-      *(buff + len) = (char)strtol((char*)number, NULL, 16);
-      len++;
+      pos++;
+      continue;
+    }
+    if ((isxdigit((unsigned char)*pos)) &&
+        (isxdigit((unsigned char)*(pos + 1)))) {
+      memcpy(number, pos, 2);
+      pos += 2;
+    } else {
+      len = 0;
+      break;
     }
 
-    return len;
+    *(buff + len) = (char)strtol((char*)number, NULL, 16);
+    len++;
   }
-};
+
+  return len;
+}
+
+void EdgeTest::GetRemoteNodeId(const TestCase& tc, ls_node_id& remote) const {
+  remote = {.origin = ls_origin::ISIS_L1, .id = {.iso = {.level = 1}}};
+  int ret = SysIdToBuffer(remote.id.iso.sys_id,
+                          tc.api_param.remote.iso_sys_id.c_str());
+  ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
+      << "[sys_id]: remote node ID must be a valid ISO system identifier.";
+}
+
+void EdgeTest::GetAdvNodeId(const TestCase& tc, ls_node_id& adv) const {
+  adv = {.origin = ls_origin::ISIS_L1, .id = {.iso = {.level = 1}}};
+  int ret = SysIdToBuffer(adv.id.iso.sys_id,
+                          tc.api_param.data.adv.iso_sys_id.c_str());
+  ASSERT_EQ(ISIS_SYS_ID_LEN, ret) << "[sys_id]: advertising node ID must be "
+                                     "a valid ISO system identifier.";
+}
+
+void EdgeTest::FillSrcAttributes(const TestCase& tc, const ls_node_id& adv,
+                                 in6_addr& local, ls_attributes* &attr) const {
+  int ret = inet_pton(AF_INET6, tc.api_param.data.local.c_str(), (void*)&local);
+
+  ASSERT_EQ(1, ret) << "[ipv6]: local address must be a valid IPv6 address.";
+  attr = ls_attributes_new(adv, in_addr{}, local, 0);
+}
+
+void EdgeTest::FillDstAttributes(const TestCase& tc, in6_addr remote,
+                                 ls_attributes& attr) const {
+  if (!tc.api_param.data.name.empty()) {
+    strncpy(attr.name, tc.api_param.data.name.c_str(), MAX_NAME_LENGTH);
+    SET_FLAG(attr.flags, LS_ATTR_NAME);
+  }
+
+  attr.metric = tc.api_param.data.metric;
+  SET_FLAG(attr.flags, LS_ATTR_METRIC);
+
+  int ret =
+      inet_pton(AF_INET6, tc.api_param.data.remote.c_str(), (void*)&remote);
+  ASSERT_EQ(1, ret) << "[ipv6]: remote address must be a valid IPv6 address.";
+
+  attr.standard.remote6 = remote;
+  SET_FLAG(attr.flags, LS_ATTR_NEIGH_ADDR6);
+}
 
 TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Arrange
@@ -99,55 +134,30 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // TODO model may have IS-IS level as a free variable to test for IS-IS
   // interoperability between level 1 and level 2 nodes (specifically 1/2
   // nodes); check this again in the future
-  struct ls_node_id remote_node_id = {.origin = ls_origin::ISIS_L1,
-                                      .id = {.iso = {.level = 1}}};
-  int ret = sysid2buff(remote_node_id.id.iso.sys_id,
-                       tc.api_param.remote.iso_sys_id.c_str());
-  ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
-      << "[sys_id]: remote node ID must be a valid ISO system identifier.";
+  ls_node_id remote_node_id{};
+  GetRemoteNodeId(tc, remote_node_id);
 
   // TODO same as remote node - see above
-  struct ls_node_id adv_node_id = {.origin = ls_origin::ISIS_L1,
-                                   .id = {.iso = {.level = 1}}};
-  ret = sysid2buff(adv_node_id.id.iso.sys_id,
-                   tc.api_param.data.adv.iso_sys_id.c_str());
-  ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
-      << "[sys_id]: advertising node ID must be a valid ISO system identifier.";
+  ls_node_id adv_node_id{};
+  GetRemoteNodeId(tc, adv_node_id);
 
-  struct in_addr any = {.s_addr = INADDR_ANY};
-  struct in6_addr local6;
-  uint32_t local_id = 0;
-  ret = inet_pton(AF_INET6, tc.api_param.data.local.c_str(), (void*)&local6);
-
-  ASSERT_EQ(1, ret) << "[ipv6]: local address must be a valid IPv6 address.";
-  struct ls_attributes* attr =
-      ls_attributes_new(adv_node_id, any, local6, local_id);
+  in6_addr local6;
+  ls_attributes* attr;
+  FillSrcAttributes(tc, adv_node_id, local6, attr);
 
   if (attr == nullptr) {
     GTEST_SKIP() << "[ls_attr]: test " << tc.test_id
                  << " provides no meaningful input.";
   }
 
-  if (!tc.api_param.data.name.empty()) {
-    strncpy(attr->name, tc.api_param.data.name.c_str(), MAX_NAME_LENGTH);
-    SET_FLAG(attr->flags, LS_ATTR_NAME);
-  }
+  in6_addr remote6;
+  FillDstAttributes(tc, remote6, *attr);
 
-  attr->metric = tc.api_param.data.metric;
-  SET_FLAG(attr->flags, LS_ATTR_METRIC);
-
-  struct in6_addr remote6;
-  ret = inet_pton(AF_INET6, tc.api_param.data.remote.c_str(), (void*)&remote6);
-  ASSERT_EQ(1, ret) << "[ipv6]: remote address must be a valid IPv6 address.";
-
-  attr->standard.remote6 = remote6;
-  SET_FLAG(attr->flags, LS_ATTR_NEIGH_ADDR6);
-
-  struct ls_node* remote_node = ls_node_new(remote_node_id, any, remote6);
+  struct ls_node* remote_node = ls_node_new(remote_node_id, in_addr{}, remote6);
 
   // TODO send ls_message with remote_node
 
-  struct ls_node* adv_node = ls_node_new(adv_node_id, any, local6);
+  struct ls_node* adv_node = ls_node_new(adv_node_id, in_addr{}, local6);
 
   // TODO send ls_message with adv_node
 
@@ -242,7 +252,8 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Assert
   // TODO implement assertion to check if the TED has two-way direction
   // installed, as well as the RIB
-  ASSERT_NE(tc.test_id, 0);
+  ASSERT_TRUE(bridge_edge_exists_ted(attr))
+      << "[ls_attributes]: edge does not exist within TED.";
 
   // Clean
   sbuf_free(&sbuf);
