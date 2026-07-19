@@ -1,6 +1,6 @@
+#include "test_bgp_ls_edge_update.h"
+
 #include <arpa/inet.h>
-#include <gtest/gtest.h>
-#include <netinet/in.h>
 
 #include <algorithm>
 #include <cctype>
@@ -8,206 +8,162 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-#include "common_data.h"
 #include "frr_bridge.h"
-
-// some FRR headers (mainly lib/ headers) already include guards for C++
-
-/**
- * Hacky solution to compiling with C++ (keyword delete cannot be used as a
- * variable name); see https://stackoverflow.com/a/25647229
- */
-#define delete to_delete
-#include "lib/link_state.h"
-#undef delete
-
 #include "lib/stream.h"
 #include "lib/zclient.h"
 #include "sbuf.h"
-
-#define ISIS_SYS_ID_LEN 6
+#include "utils.hpp"
 
 namespace Model {
 
-class EdgeTest : public testing::TestWithParam<TestCase> {
- protected:
-  void SetUp() override {
-    // TODO
+void EdgeTest::SetUp() {
+  // TODO
+}
+
+void EdgeTest::TearDown() { bridge_clear_bgp_ls_ted(); }
+
+void EdgeTest::NodeIdToFrr(const LinkStateNodeId& nodeId,
+                           ls_node_id& frrNodeId) const {
+  // for now, we default to IS-IS level 1
+  frrNodeId = {.origin = ls_origin::ISIS_L1, .id = {.iso = {.level = 1}}};
+  int ret = SysIdToBuffer(frrNodeId.id.iso.sys_id, nodeId.iso_sys_id.c_str());
+  ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
+      << "[sys_id]: node ID is not a valid ISO system identifier.";
+}
+
+void EdgeTest::AttributesToFrr(const LinkStateAttributes& attr,
+                               const ls_node_id& adv,
+                               ls_attributes*& frrAttr) const {
+  in6_addr local{};
+  int ret = inet_pton(AF_INET6, attr.local.c_str(), (void*)&local);
+
+  ASSERT_EQ(1, ret) << "[ipv6]: address is not a valid IPv6 address.";
+  frrAttr = ls_attributes_new(adv, in_addr{}, local, 0);
+
+  if (!attr.name.empty()) {
+    strncpy(frrAttr->name, attr.name.c_str(), MAX_NAME_LENGTH);
+    SET_FLAG(frrAttr->flags, LS_ATTR_NAME);
   }
 
-  void TearDown() override { bridge_clear_bgp_ls_ted(); }
+  frrAttr->metric = attr.metric;
+  SET_FLAG(frrAttr->flags, LS_ATTR_METRIC);
 
-  int sysid2buff(uint8_t* buff, const char* dotted) {
-    int len = 0;
-    const char* pos = dotted;
-    uint8_t number[3];
+  in6_addr remote{};
+  ret = inet_pton(AF_INET6, attr.remote.c_str(), (void*)&remote);
+  ASSERT_EQ(1, ret) << "[ipv6]: remote address is not a valid IPv6 address.";
 
-    number[2] = '\0';
-    // surely not a sysid_string if not 14 length
-    if (strlen(dotted) != 14) {
-      return 0;
-    }
+  frrAttr->standard.remote6 = remote;
+  SET_FLAG(frrAttr->flags, LS_ATTR_NEIGH_ADDR6);
+}
 
-    while (len < ISIS_SYS_ID_LEN) {
-      if (*pos == '.') {
-        /* the . is not positioned correctly */
-        if (((pos - dotted) != 4) && ((pos - dotted) != 9)) {
-          len = 0;
-          break;
-        }
-        pos++;
-        continue;
-      }
-      if ((isxdigit((unsigned char)*pos)) &&
-          (isxdigit((unsigned char)*(pos + 1)))) {
-        memcpy(number, pos, 2);
-        pos += 2;
-      } else {
-        len = 0;
-        break;
-      }
+void EdgeTest::SendNodeMessage(const ls_node& node, BEvent event) const {
+  stream* s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
-      *(buff + len) = (char)strtol((char*)number, NULL, 16);
-      len++;
-    }
+  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
+  stream_putc(s, static_cast<uint8_t>(event));
+  stream_putc(s, LS_MSG_TYPE_NODE);
 
-    return len;
+  // from ls_format_node (lib/link_state.c, lines 1532-1580)
+  stream_put(s, &node.adv, sizeof(struct ls_node_id));
+  stream_putw(s, node.flags);
+
+  stream_put(s, &node.router_id6, IPV6_MAX_BYTELEN);
+
+  bridge_send_message(s, zapi_opaque_registry::LINK_STATE_UPDATE);
+  stream_free(s);
+}
+
+void EdgeTest::SendAttributesMessage(const ls_attributes& attr,
+                                     const ls_node_id& remoteNodeId,
+                                     BEvent event, bool reverse) const {
+  stream* s = stream_new(ZEBRA_MAX_PACKET_SIZ);
+
+  stream_putc(s, static_cast<uint8_t>(event));
+  stream_putc(s, LS_MSG_TYPE_ATTRIBUTES);
+
+  if (reverse) {
+    stream_put(s, (void*)&attr.adv, sizeof(ls_node_id));
+    stream_put(s, (void*)&remoteNodeId, sizeof(ls_node_id));
+  } else {
+    stream_put(s, (void*)&remoteNodeId, sizeof(ls_node_id));
+    stream_put(s, (void*)&attr.adv, sizeof(ls_node_id));
   }
-};
+
+  stream_putl(s, attr.flags);
+
+  if (CHECK_FLAG(attr.flags, LS_ATTR_NAME)) {
+    size_t len = strlen(attr.name);
+    stream_putc(s, len + 1);
+    stream_put(s, (void*)attr.name, len);
+    stream_putc(s, '\0');
+  }
+
+  stream_putl(s, attr.metric);
+
+  if (reverse) {
+    stream_put(s, (void*)&attr.standard.remote6, IPV6_MAX_BYTELEN);
+    stream_put(s, (void*)&attr.standard.local6, IPV6_MAX_BYTELEN);
+  } else {
+    stream_put(s, (void*)&attr.standard.local6, IPV6_MAX_BYTELEN);
+    stream_put(s, (void*)&attr.standard.remote6, IPV6_MAX_BYTELEN);
+  }
+
+  bridge_send_message(s, zapi_opaque_registry::LINK_STATE_UPDATE);
+  stream_free(s);
+}
+
+void EdgeTest::SendUpdateMessage(const BApiLinkStateUpdate& apiMessage,
+                                 ls_attributes*& attr) const {
+  // TODO model may have IS-IS level as a free variable to test for IS-IS
+  // interoperability between level 1 and level 2 nodes (specifically 1/2
+  // nodes); check this again in the future
+  ls_node_id remote_node_id{};
+  NodeIdToFrr(apiMessage.remote, remote_node_id);
+
+  // TODO same as remote node - see above
+  ls_node_id adv_node_id{};
+  NodeIdToFrr(apiMessage.data.adv, adv_node_id);
+
+  AttributesToFrr(apiMessage.data, adv_node_id, attr);
+
+  struct ls_node* remote_node =
+      ls_node_new(remote_node_id, in_addr{}, attr->standard.remote6);
+  SendNodeMessage(*remote_node, apiMessage.event);
+
+  struct ls_node* adv_node =
+      ls_node_new(adv_node_id, in_addr{}, attr->standard.local6);
+  SendNodeMessage(*adv_node, apiMessage.event);
+
+  SendAttributesMessage(*attr, remote_node_id, apiMessage.event);  // forward
+  SendAttributesMessage(*attr, remote_node_id, apiMessage.event,
+                        true);  // reverse
+
+  ls_node_del(adv_node);
+  ls_node_del(remote_node);
+}
 
 TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Arrange
   TestCase tc = GetParam();
 
-  // Note that for arrange, we also want to place TED entries before the one
-  // we actually want to test
-
-  // TODO model may have IS-IS level as a free variable to test for IS-IS
-  // interoperability between level 1 and level 2 nodes (specifically 1/2
-  // nodes); check this again in the future
-  struct ls_node_id remote_node_id = {.origin = ls_origin::ISIS_L1,
-                                      .id = {.iso = {.level = 1}}};
-  int ret = sysid2buff(remote_node_id.id.iso.sys_id,
-                       tc.api_param.remote.iso_sys_id.c_str());
-  ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
-      << "[sys_id]: remote node ID must be a valid ISO system identifier.";
-
-  // TODO same as remote node - see above
-  struct ls_node_id adv_node_id = {.origin = ls_origin::ISIS_L1,
-                                   .id = {.iso = {.level = 1}}};
-  ret = sysid2buff(adv_node_id.id.iso.sys_id,
-                   tc.api_param.data.adv.iso_sys_id.c_str());
-  ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
-      << "[sys_id]: advertising node ID must be a valid ISO system identifier.";
-
-  struct in_addr any = {.s_addr = INADDR_ANY};
-  struct in6_addr local6;
-  uint32_t local_id = 0;
-  ret = inet_pton(AF_INET6, tc.api_param.data.local.c_str(), (void*)&local6);
-
-  ASSERT_EQ(1, ret) << "[ipv6]: local address must be a valid IPv6 address.";
-  struct ls_attributes* attr =
-      ls_attributes_new(adv_node_id, any, local6, local_id);
-
-  if (attr == nullptr) {
+  if (IsIpv6Unspecified(tc.api_param.data.local.c_str()) ||
+      IsIpv6Unspecified(tc.api_param.data.remote.c_str())) {
     GTEST_SKIP() << "[ls_attr]: test " << tc.test_id
                  << " provides no meaningful input.";
   }
 
-  if (!tc.api_param.data.name.empty()) {
-    strncpy(attr->name, tc.api_param.data.name.c_str(), MAX_NAME_LENGTH);
-    SET_FLAG(attr->flags, LS_ATTR_NAME);
+  // Note that for arrange, we also want to place TED entries before the one
+  // we actually want to test
+  for (const auto& edge : tc.initial_state.ted) {
+    ls_attributes* tempAttr;
+    BApiLinkStateUpdate message = static_cast<BApiLinkStateUpdate>(edge);
+    SendUpdateMessage(message, tempAttr);
+    ls_attributes_del(tempAttr);
   }
-
-  attr->metric = tc.api_param.data.metric;
-  SET_FLAG(attr->flags, LS_ATTR_METRIC);
-
-  struct in6_addr remote6;
-  ret = inet_pton(AF_INET6, tc.api_param.data.remote.c_str(), (void*)&remote6);
-  ASSERT_EQ(1, ret) << "[ipv6]: remote address must be a valid IPv6 address.";
-
-  attr->standard.remote6 = remote6;
-  SET_FLAG(attr->flags, LS_ATTR_NEIGH_ADDR6);
-
-  struct ls_node* remote_node = ls_node_new(remote_node_id, any, remote6);
-  struct ls_node* adv_node = ls_node_new(adv_node_id, any, local6);
-
-  struct stream* bgpd_stream = stream_new(ZEBRA_MAX_PACKET_SIZ);
-
-  struct ls_message remote_msg = {
-      .event = static_cast<uint8_t>(tc.api_param.event),
-      .type = LS_MSG_TYPE_NODE,
-      .data = {.node = remote_node}};
-
-  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
-  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
-  stream_putc(bgpd_stream, LS_MSG_TYPE_NODE);
-
-  // from ls_format_node (lib/link_state.c, lines 1532-1580)
-  stream_put(bgpd_stream, &remote_node->adv, sizeof(struct ls_node_id));
-  stream_putw(bgpd_stream, remote_node->flags);
-
-  stream_put(bgpd_stream, &remote_node->router_id6, IPV6_MAX_BYTELEN);
-
-  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
-
-  stream_reset(bgpd_stream);
-
-  struct ls_message adv_msg = {
-      .event = static_cast<uint8_t>(tc.api_param.event),
-      .type = LS_MSG_TYPE_NODE,
-      .data = {.node = adv_node}};
-
-  // same as remote_node
-
-  // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
-  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
-  stream_putc(bgpd_stream, LS_MSG_TYPE_NODE);
-
-  // from ls_format_node (lib/link_state.c, lines 1532-1580)
-  stream_put(bgpd_stream, &adv_node->adv, sizeof(struct ls_node_id));
-  stream_putw(bgpd_stream, adv_node->flags);
-
-  stream_put(bgpd_stream, &adv_node->router_id6, IPV6_MAX_BYTELEN);
-
-  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
-
-  stream_reset(bgpd_stream);
-
-  struct ls_message edge_msg = {
-      .event = static_cast<uint8_t>(tc.api_param.event),
-      .type = LS_MSG_TYPE_ATTRIBUTES,
-      .remote_id = remote_node_id,
-      .data = {.attr = attr}};
-
-  // see lib/link_state.c, lines 1836-1842 (entry point)
-
-  // from ls_format_msg (lib/link_state.c, lines 1771-1794)
-  stream_putc(bgpd_stream, static_cast<uint8_t>(tc.api_param.event));
-  stream_putc(bgpd_stream, LS_MSG_TYPE_ATTRIBUTES);
-
-  stream_put(bgpd_stream, (void*)&remote_node_id, sizeof(struct ls_node_id));
-
-  // from ls_format_attributes (lib/link_state.c, lines 1582-1725)
-  size_t len;
-
-  stream_put(bgpd_stream, &attr->adv, sizeof(struct ls_node_id));
-
-  stream_putl(bgpd_stream, attr->flags);
-
-  if (CHECK_FLAG(attr->flags, LS_ATTR_NAME)) {
-    len = strlen(attr->name);
-    stream_putc(bgpd_stream, len + 1);
-    stream_put(bgpd_stream, attr->name, len);
-    stream_putc(bgpd_stream, '\0');
-  }
-
-  stream_putl(bgpd_stream, attr->metric);
-  stream_put(bgpd_stream, &attr->standard.local6, IPV6_MAX_BYTELEN);
-  stream_put(bgpd_stream, &attr->standard.remote6, IPV6_MAX_BYTELEN);
 
   // Act
-  bridge_send_message(bgpd_stream, zapi_opaque_registry::LINK_STATE_UPDATE);
+  ls_attributes* attr;
+  SendUpdateMessage(tc.api_param, attr);
 
   // Debug
   struct sbuf sbuf;
@@ -217,16 +173,12 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   std::cout << sbuf_buf(&sbuf) << std::endl;
 
   // Assert
-  // TODO implement assertion to check if the TED has two-way direction
-  // installed, as well as the RIB
-  ASSERT_NE(tc.test_id, 0);
+  ASSERT_TRUE(bridge_edge_exists_ted(attr))
+      << "[ls_attributes]: edge does not exist within TED.";
 
   // Clean
   sbuf_free(&sbuf);
-  ls_node_del(adv_node);
-  ls_node_del(remote_node);
   ls_attributes_del(attr);
-  stream_free(bgpd_stream);
 }
 
 // supplies a custom ID generator based on the TestId field in JSON

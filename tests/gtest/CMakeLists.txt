@@ -52,6 +52,7 @@ find_library(LIBRFP
 
 add_executable(model_tests 
     "src/bgpd_env.cpp"
+    "src/common_data.cpp"
     "src/main.cpp" 
     "src/test_bgp_ls_edge_update.cpp" 
 

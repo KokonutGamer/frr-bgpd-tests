@@ -1,6 +1,14 @@
 #ifndef FRR_BRIDGE_H
 #define FRR_BRIDGE_H
 
+#include <stdbool.h>
+
+#define UNKNOWN LS_UNKNOWN
+#define delete to_delete
+#include "lib/link_state.h"
+#undef delete
+#undef UNKNOWN
+
 #include "lib/stream.h"
 #include "sbuf.h"  // modified version of lib/sbuf.h
 
@@ -48,6 +56,19 @@ void bridge_send_message(struct stream* s, uint8_t msg_type);
  * @brief Pushes BGP-LS's TED to a string buffer for debugging.
  */
 void bridge_show_ted(struct sbuf* sbuf);
+
+/**
+ * @brief Checks to see if an edge exists within BGP-LS's TED.
+ *
+ * This function checks two-way connectivity. Therefore, test cases must send
+ * both the forward edge and the reverse edge to the BGP instance to ensure this
+ * function returns true.
+ *
+ * @param attr      Link-state attributes corresponding to the edge to check.
+ * @return          True if the forward and reverse edge exists; false
+ *                      otherwise.
+ */
+bool bridge_edge_exists_ted(struct ls_attributes* attr);
 
 #ifdef __cplusplus
 }

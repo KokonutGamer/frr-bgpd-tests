@@ -159,29 +159,70 @@ static const char *edge_key_to_text(struct ls_edge_key key) {
   return rv;
 }
 
+static const char *const status2txt[] = {"Unknown", "New",  "Update",
+                                         "Delete",  "Sync", "Orphan"};
+
 static const char *const origin2txt[] = {"Unknown", "ISIS_L1", "ISIS_L2",
                                          "OSPFv2",  "Direct",  "Static"};
 
+static void vertex_to_text(const struct ls_vertex *const vertex,
+                           struct sbuf *sbuf) {
+  struct ls_node *lsn = vertex->node;
+  sbuf_push(sbuf, 2, "Vertex (%" PRIu64 "): %s", vertex->key, lsn->name);
+  sbuf_push(sbuf, 0, "\tRouter Id: %pI4", &lsn->router_id);
+  sbuf_push(sbuf, 0, "\tOrigin: %s", origin2txt[lsn->adv.origin]);
+  sbuf_push(sbuf, 0, "\tStatus: %s\n", status2txt[vertex->status]);
+  sbuf_push(sbuf, 0, "\t%d Outgoing Edges, %d Incoming Edges, %d Subnets\n",
+            listcount(vertex->outgoing_edges),
+            listcount(vertex->incoming_edges), listcount(vertex->prefixes));
+}
+
+/**
+ * from ls_show_edge_vty (lib/link_state.c, lines 2463-2637)
+ */
+static void edge_to_text(const struct ls_edge *const edge, struct sbuf *sbuf) {
+  struct ls_attributes *attr = edge->attributes;
+  char buf[INET6_BUFSIZ];
+
+  sbuf_push(sbuf, 2, "Edge (%s): ", edge_key_to_text(edge->key));
+  sbuf_push(sbuf, 0, "%pI6", &attr->standard.local6);
+  ls_node_id_to_text(attr->adv, buf, INET6_BUFSIZ);
+  sbuf_push(sbuf, 0, "\tAdv. Vertex: %s", buf);
+  sbuf_push(sbuf, 0, "\tMetric: %u", attr->metric);
+  sbuf_push(sbuf, 4, "Origin: %s\n", origin2txt[attr->adv.origin]);
+
+  sbuf_push(sbuf, 4, "Local IPv6 address: %pI6\n", &attr->standard.local6);
+  sbuf_push(sbuf, 4, "Remote IPv6 address: %pI6\n", &attr->standard.remote6);
+}
+
 void bridge_show_ted(struct sbuf *sbuf) {
+  struct ls_vertex *vertex;
+  frr_each(vertices, &bgp->ls_info->ted->vertices, vertex) {
+    if (!vertex) {
+      continue;
+    }
+    vertex_to_text(vertex, sbuf);
+  }
+
   struct ls_edge *edge;
   frr_each(edges, &bgp->ls_info->ted->edges, edge) {
     if (!edge) {
       continue;
     }
-
-    // from ls_show_edge_vty (lib/link_state.c, lines 2463-2637)
-
-    struct ls_attributes *attr = edge->attributes;
-    char buf[INET6_BUFSIZ];
-
-    sbuf_push(sbuf, 2, "Edge (%s): ", edge_key_to_text(edge->key));
-    sbuf_push(sbuf, 0, "%pI6", &attr->standard.local6);
-    ls_node_id_to_text(attr->adv, buf, INET6_BUFSIZ);
-    sbuf_push(sbuf, 0, "\tAdv. Vertex: %s", buf);
-    sbuf_push(sbuf, 0, "\tMetric: %u", attr->metric);
-    sbuf_push(sbuf, 4, "Origin: %s\n", origin2txt[attr->adv.origin]);
-
-    sbuf_push(sbuf, 4, "Local IPv6 address: %pI6\n", &attr->standard.local6);
-    sbuf_push(sbuf, 4, "Remote IPv6 address: %pI6\n", &attr->standard.remote6);
+    edge_to_text(edge, sbuf);
   }
+}
+
+bool bridge_edge_exists_ted(struct ls_attributes *attr) {
+  struct ls_edge *src_edge = ls_find_edge_by_source(bgp->ls_info->ted, attr);
+  struct ls_edge *dst_edge =
+      ls_find_edge_by_destination(bgp->ls_info->ted, attr);
+
+  // NOTE: we do not need to free src_edge or dst_edge; these are essentially
+  // the raw pointers from the TED, NOT copies, which will be cleaned up during
+  // test `TearDown`.
+
+  return src_edge != NULL && dst_edge != NULL &&
+         ls_vertex_same(src_edge->source, dst_edge->destination) &&
+         ls_vertex_same(src_edge->destination, dst_edge->source);
 }
