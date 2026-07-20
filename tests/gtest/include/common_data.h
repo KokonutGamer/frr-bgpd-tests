@@ -13,7 +13,10 @@ using addr_t = std::string;
 namespace Model {
 
 /**
- * TODO document
+ * @brief Link-state node according to the BGP-LS protocol.
+ *
+ * This data structure is a trimmed version of FRR's node descriptor. The
+ * original node descriptor data structure fully complies with RFC 9552.
  */
 struct BgpLsNode {
   uint32_t asn;
@@ -22,7 +25,12 @@ struct BgpLsNode {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsNode, asn, igp_router_id)
 
 /**
- * TODO document
+ * @brief Link-state link according to the BGP-LS protocol.
+ *
+ * This data structure is a trimmed version of FRR's link descriptor. Most
+ * notably, it only includes IPv6 address fields rather than having IDs and IPv4
+ * addresses alongside it. The original link descriptor data structure fully
+ * complies with RFC 9552.
  */
 struct BgpLsLink {
   addr_t interface;
@@ -32,7 +40,12 @@ struct BgpLsLink {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLink, interface, neighbor, remote_asn)
 
 /**
- * TODO document
+ * @brief Link-state link Network Layer Reachability Information (NLRI).
+ *
+ * This data structure is a trimmed version of FRR's link NLRI. Because this
+ * test suite is limited to IS-IS in scope, specifying `protocol_id` would be
+ * redundant to this implementation. The original link NLRI data structure fully
+ * complies with RFC 9552.
  */
 struct BgpLsLinkNlri {
   BgpLsNode source;
@@ -42,7 +55,12 @@ struct BgpLsLinkNlri {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLinkNlri, source, destination, link)
 
 /**
- * TODO document
+ * @brief Unique identifier for a node in a network.
+ *
+ * This data structure is a trimmed version of FRR's node ID. Because this test
+ * suite is limited to IS-IS in scope, specifying `origin` would be redundant to
+ * this implementation. The original node ID data structure is specific to FRR's
+ * implementation of an IGP-agnostic link-state representation of the network.
  */
 struct LinkStateNodeId {
   sys_id_t iso_sys_id;
@@ -51,7 +69,12 @@ struct LinkStateNodeId {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 
 /**
- * TODO document
+ * @brief Unidirectional path between two nodes in a network.
+ *
+ * This data structure is a trimmed version of FRR's edge. Most notably, FRR
+ * uses a red-black tree internally to speed up edge lookups within the TED. The
+ * original edge data structure is specific to FRR's implementation of an
+ * IGP-agnostic link-state representation of the network.
  */
 struct LinkStateEdge {
   uint32_t asn;
@@ -64,7 +87,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
                                    destination_node, source, destination)
 
 /**
- * TODO document
+ * @brief Various metrics assigned to or collected from a link between two nodes
+ * in a network.
+ *
+ * This data structure is a trimmed version of FRR's attributes. FRR keeps track
+ * of 60+ fields; this test suite only uses a small subset of those fields for
+ * validation, which includes the source and destination addresses. The original
+ * attributes data structure is specific to FRR's implementation of an
+ * IGP-agnostic link-state representation of the network.
  */
 struct LinkStateAttributes {
   bool valid;
@@ -78,7 +108,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateAttributes, valid, adv, name,
                                    metric, local, remote)
 
 /**
- * TODO document
+ * TODO use this in code - this struct doesn't seem to be used meaningfully at
+ * all within the test suite; need to perform RIB validation/verification
  */
 struct BgpRibEntry {
   prefix_t synth_prefix;
@@ -87,12 +118,21 @@ struct BgpRibEntry {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpRibEntry, synth_prefix, ls_nlri)
 
 /**
- * TODO document
+ * @brief Link-state message event.
+ *
+ * This enum class corresponds directly to the Zebra API's Opaque link-state
+ * message event macros. Currently, only five types, `UNDEF`, `SYNC`, `ADD`,
+ * `UPDATE`, and `DELETE`, are implemented.
  */
 enum class BEvent : uint8_t { UNDEF = 0, SYNC, ADD, UPDATE, DELETE };
 
 /**
- * TODO document
+ * @brief Link-state update message.
+ *
+ * This data structure is a trimmed version of FRR's message. Because this test
+ * suite is limited to edge updates, specifying `type` would be redundant to
+ * this implementation. The original message data structure is specific the
+ * Zebra API's Opaque message system.
  */
 struct BApiLinkStateUpdate {
   BEvent event;
@@ -102,7 +142,12 @@ struct BApiLinkStateUpdate {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BApiLinkStateUpdate, event, remote, data)
 
 /**
- * TODO document
+ * @brief Link-state of the BGP instance.
+ *
+ * This data structure encapsulates both BGP's Routing Information Base (RIB)
+ * and BGP-LS's internal Traffic Engineering Database (TED); FRR's
+ * implementation does not keep this information together in one place. However,
+ * the BGP instance should be keeping both the RIB and the TED synced.
  */
 struct BgpLsLinkState {
   uint32_t asn;
@@ -113,7 +158,6 @@ inline void to_json(nlohmann::json& j, const BgpLsLinkState& ls) {
   j = nlohmann::json{
       {"asn", ls.asn}, {"linkstate_ted", ls.ted}, {"rib_nlri", ls.rib}};
 }
-
 inline void from_json(const nlohmann::json& j, BgpLsLinkState& ls) {
   j.at("asn").get_to(ls.asn);
   j.at("linkstate_ted").get_to(ls.ted);
@@ -121,7 +165,7 @@ inline void from_json(const nlohmann::json& j, BgpLsLinkState& ls) {
 }
 
 /**
- * TODO document
+ * @brief Model test case containing initial state, transition, and final state.
  */
 struct TestCase {
   int test_id;
@@ -131,7 +175,6 @@ struct TestCase {
   BgpLsLinkState final_state;
   int response;
 };
-
 inline void to_json(nlohmann::json& j, const TestCase& tc) {
   j = nlohmann::json{{"TestId", tc.test_id},
                      {"Op", tc.op},
@@ -140,7 +183,6 @@ inline void to_json(nlohmann::json& j, const TestCase& tc) {
                      {"FinalState", tc.final_state},
                      {"Response", tc.response}};
 }
-
 inline void from_json(const nlohmann::json& j, TestCase& tc) {
   j.at("TestId").get_to(tc.test_id);
   j.at("Op").get_to(tc.op);
@@ -151,13 +193,18 @@ inline void from_json(const nlohmann::json& j, TestCase& tc) {
 }
 
 /**
- * Global variable within the Model namespace holding all TestCases for using in
- * value-parameterized tests.
+ * @brief `TestCase` objects used in the Google Test value-parameterized tests.
  */
 inline std::vector<TestCase> testCases;
 
 /**
- * TODO document
+ * @brief Prints information about `TestCase` instances.
+ *
+ * Google Test relies on this function to print information about test runs. If
+ * this function isn't defined, Valgrind will complain about "uninitialized
+ * values" and "conditional jumps relying on uninitialized values". Note that
+ * `AbslStringify` is an alternative function that Google Test uses in the same
+ * manner.
  */
 inline void PrintTo(const TestCase& tc, std::ostream* os) {
   *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << " }";

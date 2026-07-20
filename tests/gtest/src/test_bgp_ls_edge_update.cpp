@@ -8,20 +8,12 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-/**
- * Hacky solution to compiling with C++ (keyword delete cannot be used as a
- * variable name); see https://stackoverflow.com/a/25647229
- */
-#define delete to_delete
-#include "lib/link_state.h"
-#undef delete
-
 #include "frr_bridge.h"
 #include "lib/stream.h"
 #include "lib/zclient.h"
 #include "sbuf.h"
 
-#define ISIS_SYS_ID_LEN 6
+static constexpr int ISIS_SYS_ID_LEN = 6;
 
 namespace Model {
 
@@ -34,8 +26,6 @@ void EdgeTest::SetUp() {
 }
 
 void EdgeTest::TearDown() {
-  // TODO check bgpd
-  // perhaps have each test clean up the LS TED and RIB
   bridge_clear_bgp_ls_ted();
 }
 
@@ -254,8 +244,6 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   std::cout << sbuf_buf(&sbuf) << std::endl;
 
   // Assert
-  // TODO implement assertion to check if the TED has two-way direction
-  // installed, as well as the RIB
   ASSERT_TRUE(bridge_edge_exists_ted(attr))
       << "[ls_attributes]: edge does not exist within TED.";
 

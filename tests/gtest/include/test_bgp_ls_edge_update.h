@@ -25,8 +25,11 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
   virtual void SetUp() override;
 
   /**
-   * TODO document how tear down works; this should include clearing the BGP
-   * TED.
+   * @brief Clears the BGP instance's link-state TED.
+   *
+   * Most of the work is done inside `bridge_clear_bgp_ls_ted()` within
+   * frr_bridge.h. This function simply acts as a C++ wrapper around the
+   * bridge's C implementation.
    */
   virtual void TearDown() override;
 

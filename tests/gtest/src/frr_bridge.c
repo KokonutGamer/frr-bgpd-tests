@@ -2,7 +2,6 @@
 
 // clang-format off
 #include <stdlib.h>
-
 #include <zebra.h>
 
 #include "lib/asn.h"
@@ -27,6 +26,7 @@
 #include "bgpd/bgp_network.h"
 #include "bgpd/bgp_routemap_nb.h"
 #include "bgpd/bgp_ls_ted.h"
+#include "bgpd/bgp_vty.h"
 // clang-format on
 
 /**
@@ -68,8 +68,6 @@ static struct frr_signal_t bgp_signals[] = {
     },
 };
 
-static struct frr_daemon_info bgpd_di;
-
 // mimics skip runas CLI option
 struct zebra_privs_t bgpd_privs = {0};
 
@@ -97,9 +95,11 @@ FRR_DAEMON_INFO(bgpd, BGP, .vty_port = BGP_VTY_PORT,
                 .privs = &bgpd_privs, .yang_modules = bgpd_yang_modules,
                 .n_yang_modules = array_size(bgpd_yang_modules), );
 
-void bridge_shallow_init_bgp(void) {
+void bridge_init_bgp(void) {
   qobj_init();
   bgp_attr_init();
+  cmd_init(0);
+  bgp_vty_init();
   struct event_loop *master = event_master_create(NULL);
   bgp_master_init(master, BGP_SOCKET_SNDBUF_SIZE, list_new());
   vrf_init(NULL, NULL, NULL, NULL);
@@ -110,7 +110,7 @@ void bridge_shallow_init_bgp(void) {
 
 void bridge_clear_bgp_ls_ted(void) { bgp_ls_withdraw_ted(bgp); }
 
-void bridge_shallow_clean_bgp(void) {
+void bridge_clean_bgp(void) {
   assert(bm->terminating == false);
   bm->terminating = true;
   bfd_protocol_integration_set_shutdown(true);
@@ -176,6 +176,9 @@ static void vertex_to_text(const struct ls_vertex *const vertex,
             listcount(vertex->incoming_edges), listcount(vertex->prefixes));
 }
 
+/**
+ * from ls_show_edge_vty (lib/link_state.c, lines 2463-2637)
+ */
 static void edge_to_text(const struct ls_edge *const edge, struct sbuf *sbuf) {
   struct ls_attributes *attr = edge->attributes;
   char buf[INET6_BUFSIZ];
@@ -197,7 +200,6 @@ void bridge_show_ted(struct sbuf *sbuf) {
     if (!vertex) {
       continue;
     }
-
     vertex_to_text(vertex, sbuf);
   }
 
@@ -206,27 +208,20 @@ void bridge_show_ted(struct sbuf *sbuf) {
     if (!edge) {
       continue;
     }
-
-    // from ls_show_edge_vty (lib/link_state.c, lines 2463-2637)
     edge_to_text(edge, sbuf);
   }
 }
 
 bool bridge_edge_exists_ted(struct ls_attributes *attr) {
   struct ls_edge *src_edge = ls_find_edge_by_source(bgp->ls_info->ted, attr);
-  // struct sbuf log;
-  // sbuf_init(&log, NULL, 0);
-  // edge_to_text(src_edge, &log);
-  // zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
-
-  // sbuf_reset(&log);
   struct ls_edge *dst_edge =
       ls_find_edge_by_destination(bgp->ls_info->ted, attr);
-  // edge_to_text(dst_edge, &log);
-  // zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
 
-  bool res = src_edge != NULL && dst_edge != NULL;
-  // free((void *)src_edge);
-  // free((void *)dst_edge);
-  return res;
+  // NOTE: we do not need to free src_edge or dst_edge; these are essentially
+  // the raw pointers from the TED, NOT copies, which will be cleaned up during
+  // test `TearDown`.
+
+  return src_edge != NULL && dst_edge != NULL &&
+         ls_vertex_same(src_edge->source, dst_edge->destination) &&
+         ls_vertex_same(src_edge->destination, dst_edge->source);
 }

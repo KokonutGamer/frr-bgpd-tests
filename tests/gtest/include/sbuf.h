@@ -3,6 +3,11 @@
  * Simple string buffer
  *
  * Copyright (C) 2017 Christian Franke
+ *
+ * Modified 2026 Gabe Lapingcao
+ *
+ * The only modification done is adding the <stdbool.h> header file. CMake
+ * complains about an undefined type without it.
  */
 #ifndef SBUF_H
 #define SBUF_H
@@ -55,11 +60,11 @@ extern "C" {
 #define SBUF_DEFAULT_SIZE 8192
 
 struct sbuf {
-	bool fixed;
-	char *buf;
-	size_t size;
-	size_t pos;
-	int indent;
+  bool fixed;
+  char *buf;
+  size_t size;
+  size_t pos;
+  int indent;
 };
 
 void sbuf_init(struct sbuf *dest, char *buf, size_t size);
@@ -68,7 +73,7 @@ const char *sbuf_buf(struct sbuf *buf);
 void sbuf_free(struct sbuf *buf);
 #include "lib/log.h"
 void sbuf_push(struct sbuf *buf, int indent, const char *format, ...)
-	PRINTFRR(3, 4);
+    PRINTFRR(3, 4);
 
 #ifdef __cplusplus
 }

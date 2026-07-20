@@ -8,6 +8,12 @@
 #include "bgpd_env.h"
 #include "common_data.h"
 
+/**
+ * Entrypoint for Google Test execution. Before initializing the testing
+ * framework, the JSON containing the model's output test cases is parsed and
+ * saved into a global variable within the Model namespace. bgpd is initialized
+ * inside the `BgpdEnvironment` class in which all tests are run.
+ */
 int main(int argc, char** argv) {
   std::filesystem::path jsonPath = std::filesystem::canonical(MODEL_JSON_PATH);
 
