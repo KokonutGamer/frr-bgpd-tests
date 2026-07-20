@@ -48,14 +48,33 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
   /**
    * TODO document this utility function
    */
-  void FillSrcAttributes(const TestCase& tc, const ls_node_id& adv, in6_addr& local,
-                     ls_attributes* &attr) const;
+  void FillSrcAttributes(const TestCase& tc, const ls_node_id& adv,
+                         in6_addr& local, ls_attributes*& attr) const;
 
   /**
    * TODO document this utility function
    */
   void FillDstAttributes(const TestCase& tc, in6_addr remote,
-                      ls_attributes& attr) const;
+                         ls_attributes& attr) const;
+
+  /**
+   * TODO document sending function
+   */
+  void SendNodeMessage(const ls_node& node, BEvent event) const;
+
+  /**
+   * TODO document sending function
+   */
+  void SendAttributesMessage(const ls_attributes& attr,
+                             const ls_node_id& remoteNodeId,
+                             BEvent event) const;
+
+  /**
+   * TODO document sending function
+   */
+  void SendReverseAttributesMessage(const ls_attributes& attr,
+                                    const ls_node_id& remoteNodeId,
+                                    BEvent event) const;
 };
 }  // namespace Model
 

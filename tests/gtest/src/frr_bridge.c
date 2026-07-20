@@ -158,8 +158,23 @@ static const char *edge_key_to_text(struct ls_edge_key key) {
   return rv;
 }
 
+static const char *const status2txt[] = {"Unknown", "New",  "Update",
+                                         "Delete",  "Sync", "Orphan"};
+
 static const char *const origin2txt[] = {"Unknown", "ISIS_L1", "ISIS_L2",
                                          "OSPFv2",  "Direct",  "Static"};
+
+static void vertex_to_text(const struct ls_vertex *const vertex,
+                           struct sbuf *sbuf) {
+  struct ls_node *lsn = vertex->node;
+  sbuf_push(sbuf, 2, "Vertex (%" PRIu64 "): %s", vertex->key, lsn->name);
+  sbuf_push(sbuf, 0, "\tRouter Id: %pI4", &lsn->router_id);
+  sbuf_push(sbuf, 0, "\tOrigin: %s", origin2txt[lsn->adv.origin]);
+  sbuf_push(sbuf, 0, "\tStatus: %s\n", status2txt[vertex->status]);
+  sbuf_push(sbuf, 0, "\t%d Outgoing Edges, %d Incoming Edges, %d Subnets\n",
+            listcount(vertex->outgoing_edges),
+            listcount(vertex->incoming_edges), listcount(vertex->prefixes));
+}
 
 static void edge_to_text(const struct ls_edge *const edge, struct sbuf *sbuf) {
   struct ls_attributes *attr = edge->attributes;
@@ -177,6 +192,15 @@ static void edge_to_text(const struct ls_edge *const edge, struct sbuf *sbuf) {
 }
 
 void bridge_show_ted(struct sbuf *sbuf) {
+  struct ls_vertex *vertex;
+  frr_each(vertices, &bgp->ls_info->ted->vertices, vertex) {
+    if (!vertex) {
+      continue;
+    }
+
+    vertex_to_text(vertex, sbuf);
+  }
+
   struct ls_edge *edge;
   frr_each(edges, &bgp->ls_info->ted->edges, edge) {
     if (!edge) {
@@ -190,20 +214,19 @@ void bridge_show_ted(struct sbuf *sbuf) {
 
 bool bridge_edge_exists_ted(struct ls_attributes *attr) {
   struct ls_edge *src_edge = ls_find_edge_by_source(bgp->ls_info->ted, attr);
-  struct sbuf log;
-  sbuf_init(&log, NULL, 0);
-  edge_to_text(src_edge, &log);
-  zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
+  // struct sbuf log;
+  // sbuf_init(&log, NULL, 0);
+  // edge_to_text(src_edge, &log);
+  // zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
 
-  sbuf_reset(&log);
+  // sbuf_reset(&log);
   struct ls_edge *dst_edge =
       ls_find_edge_by_destination(bgp->ls_info->ted, attr);
-  edge_to_text(dst_edge, &log);
-  zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
+  // edge_to_text(dst_edge, &log);
+  // zlog_warn("[ls_attributes]: %s", sbuf_buf(&log));
 
-  bool res =
-      src_edge != NULL && dst_edge != NULL && ls_edge_same(src_edge, dst_edge);
-  free((void *)src_edge);
-  free((void *)dst_edge);
+  bool res = src_edge != NULL && dst_edge != NULL;
+  // free((void *)src_edge);
+  // free((void *)dst_edge);
   return res;
 }
