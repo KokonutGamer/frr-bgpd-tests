@@ -34,31 +34,15 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
   virtual void TearDown() override;
 
   /**
-   * TODO document how this was taken from FRR's implementation
+   * TODO document conversion function
    */
-  int SysIdToBuffer(uint8_t* buff, const char* dotted) const;
+  void NodeIdToFrr(const LinkStateNodeId& nodeId, ls_node_id& frrNodeId) const;
 
   /**
-   * TODO document this utility function
+   * TODO document conversion function
    */
-  void GetRemoteNodeId(const TestCase& tc, ls_node_id& remote) const;
-
-  /**
-   * TODO document this utility function
-   */
-  void GetAdvNodeId(const TestCase& tc, ls_node_id& adv) const;
-
-  /**
-   * TODO document this utility function
-   */
-  void FillSrcAttributes(const TestCase& tc, const ls_node_id& adv,
-                         in6_addr& local, ls_attributes*& attr) const;
-
-  /**
-   * TODO document this utility function
-   */
-  void FillDstAttributes(const TestCase& tc, in6_addr remote,
-                         ls_attributes& attr) const;
+  void AttributesToFrr(const LinkStateAttributes& attr, const ls_node_id& adv,
+                       ls_attributes*& frrAttr) const;
 
   /**
    * TODO document sending function
@@ -70,14 +54,15 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
    */
   void SendAttributesMessage(const ls_attributes& attr,
                              const ls_node_id& remoteNodeId,
-                             BEvent event) const;
+                             BEvent event, bool reverse = false) const;
 
   /**
    * TODO document sending function
+   *
+   * Note that this will do more than just sending
    */
-  void SendReverseAttributesMessage(const ls_attributes& attr,
-                                    const ls_node_id& remoteNodeId,
-                                    BEvent event) const;
+  void SendUpdateMessage(const BApiLinkStateUpdate& apiMessage,
+                         ls_attributes*& attr) const;
 };
 }  // namespace Model
 

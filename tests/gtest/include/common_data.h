@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "utils.hpp"
+
 using sys_id_t = std::string;
 using prefix_t = std::string;
 using addr_t = std::string;
@@ -68,13 +70,15 @@ struct LinkStateNodeId {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 
+struct BApiLinkStateUpdate;
+
 /**
  * @brief Unidirectional path between two nodes in a network.
  *
  * This data structure is a trimmed version of FRR's edge. Most notably, FRR
- * uses a red-black tree internally to speed up edge lookups within the TED. The
- * original edge data structure is specific to FRR's implementation of an
- * IGP-agnostic link-state representation of the network.
+ * uses a red-black tree internally to speed up edge lookups within the TED.
+ * The original edge data structure is specific to FRR's implementation of
+ * an IGP-agnostic link-state representation of the network.
  */
 struct LinkStateEdge {
   uint32_t asn;
@@ -82,6 +86,14 @@ struct LinkStateEdge {
   LinkStateNodeId destination_node;
   addr_t source;
   addr_t destination;
+
+  /**
+   * @brief Converts `LinkStateEdge` to `BApiLinkStateUpdate`.
+   *
+   * Mainly needed for populating BGP-LS's TED before the main test run within
+   * the test suite.
+   */
+  explicit operator BApiLinkStateUpdate() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
                                    destination_node, source, destination)
