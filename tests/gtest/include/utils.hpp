@@ -10,6 +10,7 @@
 #include <cstring>
 
 static constexpr int ISIS_SYS_ID_LEN = 6;
+static constexpr int ISIS_SYS_ID_CHAR_LEN = 14;
 
 namespace Model {
 
@@ -69,6 +70,27 @@ inline bool IsIpv6Unspecified(const char* ipStr) {
     return IN6_IS_ADDR_UNSPECIFIED(&addr);
   }
   return false;
+}
+
+/**
+ * TODO finish documentation
+ */
+inline bool IsSysIdUnspecified(const char* sysId) {
+  if (sysId == nullptr || strlen(sysId) != ISIS_SYS_ID_CHAR_LEN ||
+      sysId[4] != '.' || sysId[9] != '.') {
+    return false;
+  }
+
+  for (int pos = 0; pos < ISIS_SYS_ID_CHAR_LEN; pos++) {
+    if (pos == 4 || pos == 9) {
+      continue;
+    }
+
+    if (sysId[pos] != '0') {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace Model

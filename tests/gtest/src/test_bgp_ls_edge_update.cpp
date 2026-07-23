@@ -150,7 +150,9 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Arrange
   TestCase tc = GetParam();
 
-  if (IsIpv6Unspecified(tc.api_param.data.local.c_str()) ||
+  if (IsSysIdUnspecified(tc.api_param.data.adv.iso_sys_id.c_str()) ||
+      IsSysIdUnspecified(tc.api_param.remote.iso_sys_id.c_str()) ||
+      IsIpv6Unspecified(tc.api_param.data.local.c_str()) ||
       IsIpv6Unspecified(tc.api_param.data.remote.c_str())) {
     GTEST_SKIP() << "[ls_attr]: test " << tc.test_id
                  << " provides no meaningful input.";
@@ -185,7 +187,11 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   ls_attributes_del(attr);
 }
 
-INSTANTIATE_TEST_SUITE_P(CrossHairCoverageTestCases, EdgeTest,
-                         ::testing::ValuesIn(testCases));
+// supplies a custom ID generator based on the TestId field in JSON
+INSTANTIATE_TEST_SUITE_P(
+    CrossHairCoverageTestCases, EdgeTest, ::testing::ValuesIn(testCases),
+    [](const ::testing::TestParamInfo<EdgeTest::ParamType>& info) {
+      return std::to_string(info.param.test_id);
+    });
 
 }  // namespace Model
