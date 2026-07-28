@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "linkstate_data.h"
 #include "utils.hpp"
 
 using sys_id_t = std::string;
@@ -53,6 +54,21 @@ struct BgpLsLinkNlri {
   BgpLsNode source;
   BgpLsNode destination;
   BgpLsLink link;
+
+  /**
+   * @brief Converts `BgpLsLinkNlri` to `LinkState::LinkNlri`.
+   *
+   * Mainly needed for checking BGP-LS's RIB table for corresponding NLRI
+   * entries. Note that `LinkState::LinkNlri` is not the data type accepted by
+   * FRR's `bgpd` library; the required type is `struct bgp_ls_link_nlri`.
+   * However, the internal structure is completely replicated inside
+   * `linkstate_data.h`.
+   *
+   * In order to use the C API for determining if NLRI exists,
+   * `reinterpret_cast` is used to circumvent include errors when attempting to
+   * use the C API in C++ code.
+   */
+  explicit operator LinkState::LinkNlri() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLinkNlri, source, destination, link)
 

@@ -11,16 +11,22 @@
 #include "frr_bridge.h"
 #include "lib/stream.h"
 #include "lib/zclient.h"
+#include "linkstate_data.h"
 #include "sbuf.h"
 #include "utils.hpp"
 
 namespace Model {
 
 void EdgeTest::SetUp() {
-  // TODO
+  ASSERT_TRUE(bridge_check_bgpd_running())
+      << "[Fixture SetUp]: bgpd is not running.";
+  ASSERT_TRUE(bridge_check_ls_clear())
+      << "[Fixture SetUp]: BGP-LS TED is not empty.";
 }
 
 void EdgeTest::TearDown() { bridge_clear_bgp_ls_ted(); }
+
+void EdgeTest::SetDebugMode(bool debug) { EdgeTest::DebugMode = debug; }
 
 void EdgeTest::NodeIdToFrr(const LinkStateNodeId& nodeId,
                            ls_node_id& frrNodeId) const {
@@ -142,6 +148,20 @@ void EdgeTest::SendUpdateMessage(const BApiLinkStateUpdate& apiMessage,
   ls_node_del(remote_node);
 }
 
+void EdgeTest::VerifyNlri(const std::vector<BgpLsLinkNlri>& rib) const {
+  for (const auto& entry : rib) {
+    LinkState::LinkNlri nlri = static_cast<LinkState::LinkNlri>(entry);
+    LinkState::ParentNlri p{.type = LinkState::NlriType::LINK,
+                            .data = {.link = nlri}};
+
+    // WARNING: unsafe cast; this is being used to bypass include errors with
+    // the FRR bgpd library
+    bgp_ls_nlri* nlriCast = reinterpret_cast<bgp_ls_nlri*>(&p);
+    ASSERT_TRUE(bridge_link_exists_nlri(nlriCast))
+        << "[bgp_ls_nlri]: NLRI does not exist within the RIB.";
+  }
+}
+
 TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Arrange
   TestCase tc = GetParam();
@@ -168,18 +188,22 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   SendUpdateMessage(tc.api_param, attr);
 
   // Debug
-  struct sbuf sbuf;
-  sbuf_init(&sbuf, NULL, 0);
+  if (EdgeTest::DebugMode) {
+    struct sbuf sbuf;
+    sbuf_init(&sbuf, NULL, 0);
 
-  bridge_show_ted(&sbuf);
-  std::cout << sbuf_buf(&sbuf) << std::endl;
+    bridge_show_ted(&sbuf);
+    bridge_show_table(&sbuf);
+    std::cout << sbuf_buf(&sbuf) << std::endl;
+    sbuf_free(&sbuf);
+  }
 
   // Assert
   ASSERT_TRUE(bridge_edge_exists_ted(attr))
       << "[ls_attributes]: edge does not exist within TED.";
+  VerifyNlri(tc.final_state.rib);
 
   // Clean
-  sbuf_free(&sbuf);
   ls_attributes_del(attr);
 }
 

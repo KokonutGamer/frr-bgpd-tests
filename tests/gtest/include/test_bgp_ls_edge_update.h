@@ -17,10 +17,23 @@
 namespace Model {
 
 class EdgeTest : public testing::TestWithParam<TestCase> {
+ public:
+  /**
+   * @brief Sets debugging on (true) or off (false).
+   *
+   * Debugging on prints BGP-LS's TED and RIB table to the console during Google
+   * Test runs. Debugging off skips these lines.
+   */
+  static void SetDebugMode(bool debug);
+
  protected:
   /**
    * @brief Checks that FRR's BGP daemon is actively running and the BGP-LS TED
    * is empty.
+   *
+   * Most of the work is done inside `bridge_check_bgpd_running` and
+   * `bridge_clear_bgp_ls_ted` within frr_bridge.h. Fails the current test run
+   * if either condition is note met.
    */
   virtual void SetUp() override;
 
@@ -113,6 +126,22 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
    */
   void SendUpdateMessage(const BApiLinkStateUpdate& apiMessage,
                          ls_attributes*& attr) const;
+
+  /**
+   * @brief Verifies the entirety of the model's RIB exists within the current
+   * BGP instance.
+   *
+   * Iterates over each `BgpLsLinkNlri` and confirms their existence within
+   * BGP-LS's RIB table. This function uses an unsafe cast, `reinterpret_cast`,
+   * to provide the C API the correct data structure. Fails the current test run
+   * if at least one entry within `rib` is missing.
+   *
+   * @param rib     Collection of `BgpLsLinkNlri` containing NLRI to check the
+   *                    RIB with.
+   */
+  void VerifyNlri(const std::vector<BgpLsLinkNlri>& rib) const;
+
+  static inline bool DebugMode = false;
 };
 }  // namespace Model
 

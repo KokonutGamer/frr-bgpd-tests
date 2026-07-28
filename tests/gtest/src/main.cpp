@@ -4,9 +4,12 @@
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <string_view>
+#include <vector>
 
 #include "bgpd_env.h"
 #include "common_data.h"
+#include "test_bgp_ls_edge_update.h"
 
 /**
  * Entrypoint for Google Test execution. Before initializing the testing
@@ -26,6 +29,13 @@ int main(int argc, char** argv) {
 
   nlohmann::json data = nlohmann::json::parse(raw);
   Model::testCases = data.get<std::vector<Model::TestCase>>();
+
+  std::vector<std::string_view> args(argv, argv + argc);
+  for (const auto& arg : args) {
+    if (arg == "--debug" || arg == "-d") {
+      Model::EdgeTest::SetDebugMode(true);
+    }
+  }
 
   ::testing::InitGoogleTest(&argc, argv);
 

@@ -11,7 +11,11 @@ BgpdEnvironment::BgpdEnvironment() { bridge_init_bgp(); }
 BgpdEnvironment::~BgpdEnvironment() { bridge_clean_bgp(); }
 
 void BgpdEnvironment::SetUp() {
-  // TODO
+  ASSERT_TRUE(bridge_check_bgpd_running())
+      << "[Environment SetUp]: bgpd is not running.";
+
+  // we can also set some configurations here; ensure that bgpd is self-
+  // contained, not listening through other ports
 }
 
 }  // namespace Model

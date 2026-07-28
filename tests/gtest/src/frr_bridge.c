@@ -109,6 +109,8 @@ void bridge_init_bgp(void) {
   bgp_get(&bgp, &asn, NULL, BGP_INSTANCE_TYPE_DEFAULT, NULL, ASNOTATION_PLAIN);
 }
 
+bool bridge_check_bgpd_running(void) { return bgp != NULL && !bm->terminating; }
+
 void bridge_clear_bgp_ls_ted(void) { bgp_ls_withdraw_ted(bgp); }
 
 void bridge_clean_bgp(void) {
@@ -213,6 +215,32 @@ void bridge_show_ted(struct sbuf *sbuf) {
   }
 }
 
+void bridge_show_table(struct sbuf *sbuf) {
+  struct bgp_table *table;
+  struct bgp_dest *dest;
+  char formatted_nlri[1024];
+  struct bgp_ls_nlri *entry;
+
+  if (!bgp || !bgp->ls_info) {
+    return;
+  }
+
+  table = bgp->rib[AFI_BGP_LS][SAFI_BGP_LS];
+  if (!table) {
+    return;
+  }
+
+  for (dest = bgp_table_top(table); dest; dest = bgp_route_next(dest)) {
+    entry = dest->ls_nlri;
+    if (!entry) {
+      continue;
+    }
+
+    bgp_ls_nlri_format(entry, formatted_nlri, sizeof(formatted_nlri));
+    sbuf_push(sbuf, 0, "%s\n", formatted_nlri);
+  }
+}
+
 bool bridge_edge_exists_ted(struct ls_attributes *attr) {
   struct ls_edge *src_edge = ls_find_edge_by_source(bgp->ls_info->ted, attr);
   struct ls_edge *dst_edge =
@@ -225,4 +253,34 @@ bool bridge_edge_exists_ted(struct ls_attributes *attr) {
   return src_edge != NULL && dst_edge != NULL &&
          ls_vertex_same(src_edge->source, dst_edge->destination) &&
          ls_vertex_same(src_edge->destination, dst_edge->source);
+}
+
+bool bridge_link_exists_nlri(struct bgp_ls_nlri *nlri) {
+  struct bgp_ls_nlri *ret = bgp_ls_nlri_lookup(&bgp->ls_info->nlri_hash, nlri);
+  return ret != NULL;
+}
+
+bool bridge_check_ls_clear() {
+  // BGP-LS TED checks
+  struct ls_vertex *vertex;
+  frr_each(vertices, &bgp->ls_info->ted->vertices, vertex) {
+    if (vertex) {
+      return false;
+    }
+  }
+
+  struct ls_edge *edge;
+  frr_each(edges, &bgp->ls_info->ted->edges, edge) {
+    if (edge) {
+      return false;
+    }
+  }
+
+  struct ls_subnet *subnet;
+  frr_each(subnets, &bgp->ls_info->ted->subnets, subnet) {
+    if (subnet) {
+      return false;
+    }
+  }
+  return true;
 }

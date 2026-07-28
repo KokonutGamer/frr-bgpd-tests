@@ -17,6 +17,11 @@ extern "C" {
 #endif
 
 /**
+ * Forward-declaration for `bridge_link_exists_nlri`.
+ */
+struct bgp_ls_nlri;
+
+/**
  * @brief Initializes FRR's BGP daemon along with a single BGP routing instance.
  *
  * The configuration specified by this function is bare-bones, allowing for
@@ -25,6 +30,16 @@ extern "C" {
  * with pthreads enabled.
  */
 void bridge_init_bgp(void);
+
+/**
+ * @brief Checks that FRR's BGP daemon is actively running.
+ *
+ * Checks if the `bgp` instance is not equal to `NULL` and `bgp_master` is not
+ * yet terminating.
+ *
+ * @return      True if the BGP daemon is running; false otherwise.
+ */
+bool bridge_check_bgpd_running(void);
 
 /**
  * @brief Clears the BGP instance's link-state TED.
@@ -58,6 +73,11 @@ void bridge_send_message(struct stream* s, uint8_t msg_type);
 void bridge_show_ted(struct sbuf* sbuf);
 
 /**
+ * @brief Pushes BGP-LS's RIB table to a string buffer for debugging.
+ */
+void bridge_show_table(struct sbuf* sbuf);
+
+/**
  * @brief Checks to see if an edge exists within BGP-LS's TED.
  *
  * This function checks two-way connectivity. Therefore, test cases must send
@@ -69,6 +89,27 @@ void bridge_show_ted(struct sbuf* sbuf);
  *                      otherwise.
  */
 bool bridge_edge_exists_ted(struct ls_attributes* attr);
+
+/**
+ * @brief Checks to see if a link NLRI exists within the BGP instance's RIB.
+ *
+ * This function checks the RIB for a link NLRI corresponding to the NLRI
+ * passed.
+ *
+ * @param nlri      Link NLRI corresponding to the link to check. Represents a
+ *                      generic BGP-LS NLRI; however, the value passed should
+ *                      point to an NLRI struct with the link parameter filled.
+ * @return          True if the NLRI exists; false otherwise.
+ */
+bool bridge_link_exists_nlri(struct bgp_ls_nlri* nlri);
+
+/**
+ * @brief Checks to see if the BGP-LS TED and RIB table are empty.
+ *
+ * @return      True if both the TED and the RIB table are empty; false
+ *                  otherwise.
+ */
+bool bridge_check_ls_clear();
 
 #ifdef __cplusplus
 }

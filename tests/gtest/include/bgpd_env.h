@@ -28,6 +28,10 @@ class BgpdEnvironment : public ::testing::Environment {
 
   /**
    * @brief Checks that FRR's BGP daemon is actively running.
+   *
+   * The actual boolean assertion is implemented inside
+   * `bridge_check_bgpd_running`. Additional configuration parameters may be set
+   * inside this function in the future.
    */
   virtual void SetUp() override;
 };
