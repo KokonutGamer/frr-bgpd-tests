@@ -91,7 +91,7 @@ enum class BgpRouteType : int {
   REDISTRIBUTED
 };
 
-enum NodeDescTLV : uint16_t {
+enum class NodeDescTLV : uint16_t {
   AS_BIT = (1ULL << 0),
   BGP_LS_ID_BIT = (1ULL << 1),
   OSPF_AREA_BIT = (1ULL << 2),
@@ -126,7 +126,7 @@ struct NodeDesc {
   in_addr bgpRouterId;
 };
 
-enum LinkDescTLV : uint32_t {
+enum class LinkDescTLV : uint32_t {
   LINK_ID_BIT = (1ULL << 0),
   IPV4_INTF_BIT = (1ULL << 1),
   IPV4_NEIGH_BIT = (1ULL << 2),
@@ -149,6 +149,13 @@ struct LinkDesc {
   in6_addr ipv6Neigh;
   as_t remoteAsn;
   uint16_t mtId;
+};
+
+enum class PrefixDescTLV : uint16_t {
+  MT_ID_BIT = (1ULL << 0),
+  OSPF_ROUTE_BIT = (1ULL << 1),
+  IP_REACH_BIT = (1ULL << 2),
+  BGP_ROUTE_TYPE_BIT = (1ULL << 3),
 };
 
 /**
