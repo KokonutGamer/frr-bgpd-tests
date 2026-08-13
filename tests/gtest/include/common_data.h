@@ -16,6 +16,20 @@ using addr_t = std::string;
 namespace Model {
 
 /**
+ * @brief BGP route type.
+ *
+ * This enum class corresponds directly to FRR's BGP route type which is used
+ * alongside advertised prefixes.
+ */
+enum class BgpRoute {
+  LOCAL = 1,
+  ATTACHED,
+  EXTERNAL_BGP,
+  INTERNAL_BGP,
+  REDISTRIBUTED
+};
+
+/**
  * @brief Link-state node according to the BGP-LS protocol.
  *
  * This data structure is a trimmed version of FRR's node descriptor. The
@@ -41,6 +55,20 @@ struct BgpLsLink {
   uint32_t remote_asn;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLink, interface, neighbor, remote_asn)
+
+/**
+ * @brief Link-state prefix according to the BGP-LS protocol.
+ *
+ * This data structure is a trimmed version of FRR's prefix descriptor.
+ * Multi-Topology ID and OSPF route type are ignored due to lying out of the
+ * scope of this test suite. The original prefix descriptor data structure fully
+ * complies with RFC 9552.
+ */
+struct BgpLsPrefix {
+  BgpRoute bgp_route_type;
+  prefix_t prefix;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsPrefix, bgp_route_type, prefix)
 
 /**
  * @brief Link-state link Network Layer Reachability Information (NLRI).
@@ -71,6 +99,36 @@ struct BgpLsLinkNlri {
   explicit operator LinkState::LinkNlri() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLinkNlri, source, destination, link)
+
+/**
+ * @brief Link-state prefix Network Layer Reachability Information (NLRI).
+ *
+ * This data structure is a trimmed version of FRR's prefix NLRI. Because this
+ * test suite is limited to IS-IS in scope, specifying `protocol_id` would be
+ * redundant to this implementation. The original prefix NLRI data structure
+ * fully complies with RFC 9552.
+ *
+ */
+struct BgpLsPrefixNlri {
+  BgpLsNode local_node;
+  BgpLsPrefix prefix;
+
+  /**
+   * @brief Converts `BgpLsPrefixNlri` to `LinkState::PrefixNlri`.
+   *
+   * Mainly needed for checking BGP-LS's RIB table for corresponding NLRI
+   * entries. Note that `LinkState::PrefixNlri` is not the data type accepted by
+   * FRR's `bgpd` library; the required type is `struct bgp_ls_prefix_nlri`.
+   * However, the internal structure is completely replicated inside
+   * `linkstate_data.h`.
+   *
+   * In order to use the C API for determining if NLRI exists,
+   * `reinterpret_cast` is used to circumvent include errors when attempting to
+   * use the C API in C++ code.
+   */
+  explicit operator LinkState::PrefixNlri() const;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsPrefixNlri, local_node, prefix)
 
 /**
  * @brief Unique identifier for a node in a network.
@@ -125,15 +183,39 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
  * IGP-agnostic link-state representation of the network.
  */
 struct LinkStateAttributes {
-  bool valid;
   LinkStateNodeId adv;
-  std::string name;
-  uint32_t metric;
   addr_t local;
   addr_t remote;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateAttributes, valid, adv, name,
-                                   metric, local, remote)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateAttributes, adv, local, remote)
+
+/**
+ * @brief Subnet represented by a single advertised prefix in a network.
+ *
+ * This data structure is a trimmed version of FRR's subnet. Most notably, FRR
+ * uses a red-black tree internally to speed up subnet lookups within the TED.
+ * The original subnet data structure is specific to FRR's implementation of
+ * an IGP-agnostic link-state representation of the network.
+ */
+struct LinkStateSubnet {
+  prefix_t prefix;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateSubnet, prefix)
+
+/**
+ * @brief Advertised prefix within a network.
+ *
+ * This data structure is a trimmed version of FRR's prefix. FRR keeps track of
+ * 20+ fields; this test suite only uses a small subset of those fields for
+ * validations, which includes the local node and advertised prefix address. The
+ * original prefix data structure is specific to FRR's implementation of an
+ * IGP-agnostic link-state representation of the network.
+ */
+struct LinkStatePrefix {
+  LinkStateNodeId local_node;
+  prefix_t prefix;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStatePrefix, local_node, prefix)
 
 /**
  * @brief Link-state message event.

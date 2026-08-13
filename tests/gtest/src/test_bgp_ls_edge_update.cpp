@@ -46,14 +46,6 @@ void EdgeTest::AttributesToFrr(const LinkStateAttributes& attr,
   ASSERT_EQ(1, ret) << "[ipv6]: address is not a valid IPv6 address.";
   frrAttr = ls_attributes_new(adv, in_addr{}, local, 0);
 
-  if (!attr.name.empty()) {
-    strncpy(frrAttr->name, attr.name.c_str(), MAX_NAME_LENGTH);
-    SET_FLAG(frrAttr->flags, LS_ATTR_NAME);
-  }
-
-  frrAttr->metric = attr.metric;
-  SET_FLAG(frrAttr->flags, LS_ATTR_METRIC);
-
   in6_addr remote{};
   ret = inet_pton(AF_INET6, attr.remote.c_str(), (void*)&remote);
   ASSERT_EQ(1, ret) << "[ipv6]: remote address is not a valid IPv6 address.";
@@ -103,8 +95,6 @@ void EdgeTest::SendAttributesMessage(const ls_attributes& attr,
     stream_put(s, (void*)attr.name, len);
     stream_putc(s, '\0');
   }
-
-  stream_putl(s, attr.metric);
 
   if (reverse) {
     stream_put(s, (void*)&attr.standard.remote6, IPV6_MAX_BYTELEN);
