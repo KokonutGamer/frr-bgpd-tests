@@ -54,7 +54,7 @@ add_executable(model_tests
     "src/bgpd_env.cpp"
     "src/common_data.cpp"
     "src/main.cpp" 
-    "src/test_bgp_ls_edge_update.cpp" 
+    "src/test_bgp_ls_linkstate_update.cpp" 
 
     "src/frr_bridge.c"
     "src/sbuf.c"                        # used to print logs opposed to lib/sbuf.h
@@ -97,5 +97,5 @@ target_compile_options(model_tests PRIVATE
                                     # mgmt_msg_cfg_apply_reply)
 )
 target_compile_definitions(model_tests PRIVATE
-    "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/edge_update_formatted.json\""
+    "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/linkstate_update_formatted.json\""
 )

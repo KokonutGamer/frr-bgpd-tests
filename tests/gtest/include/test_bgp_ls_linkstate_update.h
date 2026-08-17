@@ -1,5 +1,5 @@
-#ifndef TEST_BGP_LS_EDGE_UPDATE_H
-#define TEST_BGP_LS_EDGE_UPDATE_H
+#ifndef TEST_BGP_LS_LINKSTATE_UPDATE_H
+#define TEST_BGP_LS_LINKSTATE_UPDATE_H
 
 #include <gtest/gtest.h>
 #include <netinet/in.h>
@@ -16,7 +16,7 @@
 
 namespace Model {
 
-class EdgeTest : public testing::TestWithParam<TestCase> {
+class LinkStateTest : public testing::TestWithParam<TestCase> {
  public:
   /**
    * @brief Sets debugging on (true) or off (false).
@@ -45,6 +45,11 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
    * bridge's C implementation.
    */
   virtual void TearDown() override;
+
+  /**
+   * @brief Checks
+   */
+  void ArrangeLinkTest(const TestCase& tc) const;
 
   /**
    * @brief Converts a `LinkStateNodeId` to FRR's `ls_node_id`.
@@ -121,11 +126,11 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
    *
    * @param apiMessage      `UPDATE` message specified by the current
    *                            `TestCase`.
-   * @param attr            FRR link-state attributes to allocate. Managed by
+   * @param frrAttr         FRR link-state attributes to allocate. Managed by
    *                            the caller of this function.
    */
-  void SendUpdateMessage(const BApiLinkStateUpdate& apiMessage,
-                         ls_attributes*& attr) const;
+  void SendLinkUpdateMessage(const BApiLinkStateUpdate& apiMessage,
+                             ls_attributes*& frrAttr) const;
 
   /**
    * @brief Verifies the entirety of the model's RIB exists within the current
@@ -139,10 +144,10 @@ class EdgeTest : public testing::TestWithParam<TestCase> {
    * @param rib     Collection of `BgpLsLinkNlri` containing NLRI to check the
    *                    RIB with.
    */
-  void VerifyNlri(const std::vector<BgpLsLinkNlri>& rib) const;
+  void VerifyNlri(const std::vector<Model::RibVar>& rib) const;
 
   static inline bool DebugMode = false;
 };
 }  // namespace Model
 
-#endif  // TEST_BGP_LS_EDGE_UPDATE_H
+#endif  // TEST_BGP_LS_LINKSTATE_UPDATE_H

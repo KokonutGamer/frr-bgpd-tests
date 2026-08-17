@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "linkstate_data.h"
@@ -14,6 +15,11 @@ using prefix_t = std::string;
 using addr_t = std::string;
 
 namespace Model {
+
+const char* const JSON_TYPE_EDGE = "edge";
+const char* const JSON_TYPE_SUBNET = "subnet";
+const char* const JSON_TYPE_LINK_NLRI = "link_nlri";
+const char* const JSON_TYPE_PREFIX_NLRI = "prefix_nlri";
 
 /**
  * @brief BGP route type.
@@ -141,6 +147,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsPrefixNlri, local_node, prefix)
 struct LinkStateNodeId {
   sys_id_t iso_sys_id;
   uint8_t level;
+
+  bool operator<=>(const LinkStateNodeId&) const = default;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 
@@ -212,10 +220,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateSubnet, prefix)
  * IGP-agnostic link-state representation of the network.
  */
 struct LinkStatePrefix {
-  LinkStateNodeId local_node;
+  LinkStateNodeId adv;
   prefix_t prefix;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStatePrefix, local_node, prefix)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStatePrefix, adv, prefix)
 
 /**
  * @brief Link-state message event.
@@ -225,6 +233,89 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStatePrefix, local_node, prefix)
  * `UPDATE`, and `DELETE`, are implemented.
  */
 enum class BEvent : uint8_t { UNDEF = 0, SYNC, ADD, UPDATE, DELETE };
+
+/**
+ * @brief `BApiLinkStateUpdate` data variant.
+ *
+ * This type alias is used by a custom ADL serializer and as a member in
+ * `BApiLinkStateUpdate` to indicate the payload as either a
+ * `LinkStateAttributes` or `LinkStatePrefix` struct.
+ */
+using DataVar = std::variant<LinkStateAttributes, LinkStatePrefix>;
+
+/**
+ * @brief `BgpLsLinkState` TED variant.
+ */
+using TedVar = std::variant<LinkStateEdge, LinkStateSubnet>;
+
+/**
+ * @brief `BgpLsPrefixNlri` RIB variant.
+ */
+using RibVar = std::variant<BgpLsLinkNlri, BgpLsPrefixNlri>;
+}  // namespace Model
+
+namespace nlohmann {
+
+#define VAR_TO_JSON(T)                                                     \
+  static void to_json(json& j, const T& var) {                             \
+    std::visit([&j](const auto& val) { nlohmann::to_json(j, val); }, var); \
+  }
+
+/**
+ * @brief Custom Argument-Dependent Lookup (ADL) serializer for
+ * `Model::DataVar`.
+ */
+template <>
+struct adl_serializer<Model::DataVar> {
+  VAR_TO_JSON(Model::DataVar)
+
+  static void from_json(const json& j, Model::DataVar& var) {
+    std::string type = j.at("type").get<std::string>();
+
+    if (type == "attributes") var = j.get<Model::LinkStateAttributes>();
+    if (type == "prefix") var = j.get<Model::LinkStatePrefix>();
+
+    std::runtime_error("[Model::DataVar]: JSON is of unknown type.");
+  }
+};
+
+/**
+ * @brief Custom Argument-Dependent Lookup (ADL) serializer for `Model::TedVar`.
+ */
+template <>
+struct adl_serializer<Model::TedVar> {
+  VAR_TO_JSON(Model::TedVar)
+
+  static void from_json(const json& j, Model::TedVar& var) {
+    std::string type = j.at("type").get<std::string>();
+
+    if (type == "edge") var = j.get<Model::LinkStateEdge>();
+    if (type == "subnet") var = j.get<Model::LinkStateSubnet>();
+
+    std::runtime_error("[Model::TedVar]: JSON is of unknown type.");
+  }
+};
+
+/**
+ * @brief Custom Argument-Dependent Lookup (ADL) serializer for `Model::RibVar`.
+ */
+template <>
+struct adl_serializer<Model::RibVar> {
+  VAR_TO_JSON(Model::RibVar)
+
+  static void from_json(const json& j, Model::RibVar& var) {
+    std::string type = j.at("type").get<std::string>();
+
+    if (type == "link_nlri") var = j.get<Model::BgpLsLinkNlri>();
+    if (type == "prefix_nlri") var = j.get<Model::BgpLsPrefixNlri>();
+
+    std::runtime_error("[Model::RibVar]: JSON is of unknown type.");
+  }
+};
+
+}  // namespace nlohmann
+
+namespace Model {
 
 /**
  * @brief Link-state update message.
@@ -237,9 +328,23 @@ enum class BEvent : uint8_t { UNDEF = 0, SYNC, ADD, UPDATE, DELETE };
 struct BApiLinkStateUpdate {
   BEvent event;
   LinkStateNodeId remote;
-  LinkStateAttributes data;
+  DataVar data;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BApiLinkStateUpdate, event, remote, data)
+inline void to_json(nlohmann::json& j, const BApiLinkStateUpdate& msg) {
+  j = nlohmann::json{{"event", msg.event}, {"data", msg.data}};
+
+  if (msg.remote != LinkStateNodeId{}) {
+    j["remote"] = msg.remote;
+  }
+}
+inline void from_json(const nlohmann::json& j, BApiLinkStateUpdate& msg) {
+  j.at("event").get_to(msg.event);
+  j.at("data").get_to(msg.data);
+
+  if (j.contains("remote")) {
+    j.at("remote").get_to(msg.remote);
+  }
+}
 
 /**
  * @brief Link-state of the BGP instance.
@@ -251,8 +356,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BApiLinkStateUpdate, event, remote, data)
  */
 struct BgpLsLinkState {
   uint32_t asn;
-  std::vector<LinkStateEdge> ted;
-  std::vector<BgpLsLinkNlri> rib;
+  std::vector<TedVar> ted;
+  std::vector<RibVar> rib;
 };
 inline void to_json(nlohmann::json& j, const BgpLsLinkState& ls) {
   j = nlohmann::json{
@@ -273,15 +378,14 @@ struct TestCase {
   BgpLsLinkState initial_state;
   BApiLinkStateUpdate api_param;
   BgpLsLinkState final_state;
-  int response;
+  // TODO "UpdateMessage" key
 };
 inline void to_json(nlohmann::json& j, const TestCase& tc) {
   j = nlohmann::json{{"TestId", tc.test_id},
                      {"Op", tc.op},
                      {"InitialState", tc.initial_state},
                      {"ApiParam", tc.api_param},
-                     {"FinalState", tc.final_state},
-                     {"Response", tc.response}};
+                     {"FinalState", tc.final_state}};
 }
 inline void from_json(const nlohmann::json& j, TestCase& tc) {
   j.at("TestId").get_to(tc.test_id);
@@ -289,7 +393,6 @@ inline void from_json(const nlohmann::json& j, TestCase& tc) {
   j.at("InitialState").get_to(tc.initial_state);
   j.at("ApiParam").get_to(tc.api_param);
   j.at("FinalState").get_to(tc.final_state);
-  j.at("Response").get_to(tc.response);
 }
 
 /**
@@ -307,7 +410,17 @@ inline std::vector<TestCase> testCases;
  * manner.
  */
 inline void PrintTo(const TestCase& tc, std::ostream* os) {
-  *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << " }";
+  std::string type;
+  if (std::holds_alternative<LinkStateAttributes>(tc.api_param.data)) {
+    type = "attributes";
+  } else if (std::holds_alternative<LinkStatePrefix>(tc.api_param.data)) {
+    type = "prefix";
+  } else {
+    type = "undefined";
+  }
+
+  *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << ", Type: " << type
+      << " }";
 }
 
 }  // namespace Model
