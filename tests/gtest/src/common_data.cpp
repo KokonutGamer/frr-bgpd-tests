@@ -2,6 +2,7 @@
 
 #include <charconv>
 #include <utility>
+#include <variant>
 
 #include "lib/prefix.h"
 #include "lib/zebra.h"
@@ -72,10 +73,11 @@ BgpLsPrefixNlri::operator LinkState::PrefixNlri() const {
 
 LinkStateEdge::operator BApiLinkStateUpdate() const {
   BApiLinkStateUpdate message{.event = BEvent::UPDATE,
-                              .remote = this->destination_node,
-                              .data = {.adv = this->source_node,
-                                       .local = this->source,
-                                       .remote = this->destination}};
+                              .remote = this->destination_node};
+  LinkStateAttributes attr = {.adv = this->source_node,
+                              .local = this->source,
+                              .remote = this->destination};
+  message.data = attr;
   return message;
 }
 
