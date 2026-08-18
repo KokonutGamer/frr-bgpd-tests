@@ -71,14 +71,4 @@ BgpLsPrefixNlri::operator LinkState::PrefixNlri() const {
   return nlri;
 }
 
-LinkStateEdge::operator BApiLinkStateUpdate() const {
-  BApiLinkStateUpdate message{.event = BEvent::UPDATE,
-                              .remote = this->destination_node};
-  LinkStateAttributes attr = {.adv = this->source_node,
-                              .local = this->source,
-                              .remote = this->destination};
-  message.data = attr;
-  return message;
-}
-
 }  // namespace Model

@@ -54,7 +54,7 @@ add_executable(model_tests
     "src/bgpd_env.cpp"
     "src/common_data.cpp"
     "src/main.cpp" 
-    "src/test_bgp_ls_linkstate_update.cpp" 
+    "src/test_bgp_ls_edge_update.cpp" 
 
     "src/frr_bridge.c"
     "src/sbuf.c"                        # used to print logs opposed to lib/sbuf.h

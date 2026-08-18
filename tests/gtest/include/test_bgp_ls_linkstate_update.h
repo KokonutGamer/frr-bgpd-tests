@@ -2,9 +2,22 @@
 #define TEST_BGP_LS_LINKSTATE_UPDATE_H
 
 #include <gtest/gtest.h>
-#include <netinet/in.h>
+
+#include <algorithm>
+#include <cctype>
+#include <concepts>
+#include <cstdint>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <variant>
 
 #include "common_data.h"
+#include "frr_bridge.h"
+#include "lib/stream.h"
+#include "lib/zclient.h"
+#include "linkstate_data.h"
+#include "sbuf.h"
+#include "utils.hpp"
 
 /**
  * Hacky solution to compiling with C++ (keyword delete cannot be used as a
@@ -16,7 +29,9 @@
 
 namespace Model {
 
-class LinkStateTest : public testing::TestWithParam<TestCase> {
+template <AttrPref T, typename U>
+requires std::same_as<U, ls_attributes> || std::same_as<U, ls_prefix>
+class LinkStateTest : public testing::TestWithParam<TestCase<T>> {
  public:
   /**
    * @brief Sets debugging on (true) or off (false).
@@ -24,7 +39,7 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    * Debugging on prints BGP-LS's TED and RIB table to the console during Google
    * Test runs. Debugging off skips these lines.
    */
-  static void SetDebugMode(bool debug);
+  static inline void SetDebugMode(bool debug) { DebugMode = debug; }
 
  protected:
   /**
@@ -33,9 +48,14 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    *
    * Most of the work is done inside `bridge_check_bgpd_running` and
    * `bridge_clear_bgp_ls_ted` within frr_bridge.h. Fails the current test run
-   * if either condition is note met.
+   * if either condition is not met.
    */
-  virtual void SetUp() override;
+  virtual inline void SetUp() override final {
+    ASSERT_TRUE(bridge_check_bgpd_running())
+        << "[Fixture SetUp]: bgpd is not running.";
+    ASSERT_TRUE(bridge_check_ls_clear())
+        << "[Fixture SetUp]: BGP-LS TED is not empty.";
+  }
 
   /**
    * @brief Clears the BGP instance's link-state TED.
@@ -44,12 +64,7 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    * frr_bridge.h. This function simply acts as a C++ wrapper around the
    * bridge's C implementation.
    */
-  virtual void TearDown() override;
-
-  /**
-   * @brief Checks
-   */
-  void ArrangeLinkTest(const TestCase& tc) const;
+  virtual inline void TearDown() override final { bridge_clear_bgp_ls_ted(); }
 
   /**
    * @brief Converts a `LinkStateNodeId` to FRR's `ls_node_id`.
@@ -63,7 +78,14 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    * @param frrNodeId       FRR link-state node ID to be populated with the ISO
    *                            sys ID from `nodeId`.
    */
-  void NodeIdToFrr(const LinkStateNodeId& nodeId, ls_node_id& frrNodeId) const;
+  inline void NodeIdToFrr(const LinkStateNodeId& nodeId,
+                          ls_node_id& frrNodeId) const {
+    // for now, we default to IS-IS level 1
+    frrNodeId = {.origin = ls_origin::ISIS_L1, .id = {.iso = {.level = 1}}};
+    int ret = SysIdToBuffer(frrNodeId.id.iso.sys_id, nodeId.iso_sys_id.c_str());
+    ASSERT_EQ(ISIS_SYS_ID_LEN, ret)
+        << "[sys_id]: node ID is not a valid ISO system identifier.";
+  }
 
   /**
    * @brief Converts `LinkStateAttributes` to FRR's `ls_attributes`.
@@ -84,8 +106,22 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    * @param frrAttr     FRR link-state attributes to be populated with
    *                        corresponding fields in `attr`.
    */
-  void AttributesToFrr(const LinkStateAttributes& attr, const ls_node_id& adv,
-                       ls_attributes*& frrAttr) const;
+  inline void AttributesToFrr(const LinkStateAttributes& attr,
+                              const ls_node_id& adv,
+                              ls_attributes*& frrAttr) const {
+    in6_addr local{};
+    int ret = inet_pton(AF_INET6, attr.local.c_str(), (void*)&local);
+
+    ASSERT_EQ(1, ret) << "[ipv6]: address is not a valid IPv6 address.";
+    frrAttr = ls_attributes_new(adv, in_addr{}, local, 0);
+
+    in6_addr remote{};
+    ret = inet_pton(AF_INET6, attr.remote.c_str(), (void*)&remote);
+    ASSERT_EQ(1, ret) << "[ipv6]: remote address is not a valid IPv6 address.";
+
+    frrAttr->standard.remote6 = remote;
+    SET_FLAG(frrAttr->flags, LS_ATTR_NEIGH_ADDR6);
+  }
 
   /**
    * @brief Sends a `ls_node` with type `event` to the BGP daemon.
@@ -95,7 +131,22 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    * @param node      FRR link-state node to send to the BGP daemon.
    * @param event     Link-state message event type.
    */
-  void SendNodeMessage(const ls_node& node, BEvent event) const;
+  inline void SendNodeMessage(const ls_node& node, BEvent event) const {
+    stream* s = stream_new(ZEBRA_MAX_PACKET_SIZ);
+
+    // from ls_format_msg (lib/link_state.c, lines 1771, 1794)
+    stream_putc(s, static_cast<uint8_t>(event));
+    stream_putc(s, LS_MSG_TYPE_NODE);
+
+    // from ls_format_node (lib/link_state.c, lines 1532-1580)
+    stream_put(s, &node.adv, sizeof(struct ls_node_id));
+    stream_putw(s, node.flags);
+
+    stream_put(s, &node.router_id6, IPV6_MAX_BYTELEN);
+
+    bridge_send_message(s, zapi_opaque_registry::LINK_STATE_UPDATE);
+    stream_free(s);
+  }
 
   /**
    * @brief Sends `ls_attributes` with type `event` to the BGP daemon.
@@ -114,7 +165,40 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    */
   void SendAttributesMessage(const ls_attributes& attr,
                              const ls_node_id& remoteNodeId, BEvent event,
-                             bool reverse = false) const;
+                             bool reverse = false) const {
+    stream* s = stream_new(ZEBRA_MAX_PACKET_SIZ);
+
+    stream_putc(s, static_cast<uint8_t>(event));
+    stream_putc(s, LS_MSG_TYPE_ATTRIBUTES);
+
+    if (reverse) {
+      stream_put(s, (void*)&attr.adv, sizeof(ls_node_id));
+      stream_put(s, (void*)&remoteNodeId, sizeof(ls_node_id));
+    } else {
+      stream_put(s, (void*)&remoteNodeId, sizeof(ls_node_id));
+      stream_put(s, (void*)&attr.adv, sizeof(ls_node_id));
+    }
+
+    stream_putl(s, attr.flags);
+
+    if (CHECK_FLAG(attr.flags, LS_ATTR_NAME)) {
+      size_t len = strlen(attr.name);
+      stream_putc(s, len + 1);
+      stream_put(s, (void*)attr.name, len);
+      stream_putc(s, '\0');
+    }
+
+    if (reverse) {
+      stream_put(s, (void*)&attr.standard.remote6, IPV6_MAX_BYTELEN);
+      stream_put(s, (void*)&attr.standard.local6, IPV6_MAX_BYTELEN);
+    } else {
+      stream_put(s, (void*)&attr.standard.local6, IPV6_MAX_BYTELEN);
+      stream_put(s, (void*)&attr.standard.remote6, IPV6_MAX_BYTELEN);
+    }
+
+    bridge_send_message(s, zapi_opaque_registry::LINK_STATE_UPDATE);
+    stream_free(s);
+  }
 
   /**
    * @brief Sends messages to the BGP daemon for edge updates.
@@ -126,11 +210,10 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    *
    * @param apiMessage      `UPDATE` message specified by the current
    *                            `TestCase`.
-   * @param frrAttr         FRR link-state attributes to allocate. Managed by
-   *                            the caller of this function.
+   * @return                FRR... (TODO)
    */
-  void SendLinkUpdateMessage(const BApiLinkStateUpdate& apiMessage,
-                             ls_attributes*& frrAttr) const;
+  virtual U* SendUpdateMessage(
+      const BApiLinkStateUpdate<T>& apiMessage) const = 0;
 
   /**
    * @brief Verifies the entirety of the model's RIB exists within the current
@@ -144,10 +227,27 @@ class LinkStateTest : public testing::TestWithParam<TestCase> {
    * @param rib     Collection of `BgpLsLinkNlri` containing NLRI to check the
    *                    RIB with.
    */
-  void VerifyNlri(const std::vector<Model::RibVar>& rib) const;
+  inline void VerifyNlri(const std::vector<Model::RibVar>& rib) const {
+    for (const Model::RibVar& var : rib) {
+      if (const BgpLsLinkNlri* entry = std::get_if<BgpLsLinkNlri>(&var)) {
+        LinkState::LinkNlri nlri = static_cast<LinkState::LinkNlri>(*entry);
+        LinkState::ParentNlri p{.type = LinkState::NlriType::LINK,
+                                .data = {.link = nlri}};
+        // WARNING: unsafe cast; this is being used to bypass include errors
+        // with the FRR bgpd library
+        bgp_ls_nlri* nlriCast = reinterpret_cast<bgp_ls_nlri*>(&p);
+        ASSERT_TRUE(bridge_link_exists_nlri(nlriCast))
+            << "[bgp_ls_nlri]: NLRI does not exist within the RIB.";
+      } else if (const BgpLsPrefixNlri* entry =
+                     std::get_if<BgpLsPrefixNlri>(&var)) {
+        // TODO
+      }
+    }
+  }
 
   static inline bool DebugMode = false;
 };
+
 }  // namespace Model
 
 #endif  // TEST_BGP_LS_LINKSTATE_UPDATE_H

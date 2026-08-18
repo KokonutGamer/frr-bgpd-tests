@@ -1,6 +1,8 @@
 #ifndef COMMON_DATA_H
 #define COMMON_DATA_H
 
+#include <algorithm>
+#include <concepts>
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -20,6 +22,8 @@ const char* const JSON_TYPE_EDGE = "edge";
 const char* const JSON_TYPE_SUBNET = "subnet";
 const char* const JSON_TYPE_LINK_NLRI = "link_nlri";
 const char* const JSON_TYPE_PREFIX_NLRI = "prefix_nlri";
+const char* const JSON_TYPE_ATTRIBUTES = "attributes";
+const char* const JSON_TYPE_PREFIX = "prefix";
 
 /**
  * @brief BGP route type.
@@ -152,6 +156,17 @@ struct LinkStateNodeId {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 
+struct LinkStateAttributes;
+struct LinkStatePrefix;
+
+/**
+ * @brief Template constraint for `LinkStateAttributes` and `LinkStatePrefix`.
+ */
+template <typename T>
+concept AttrPref =
+    std::same_as<T, LinkStateAttributes> || std::same_as<T, LinkStatePrefix>;
+
+template <AttrPref T>
 struct BApiLinkStateUpdate;
 
 /**
@@ -175,7 +190,7 @@ struct LinkStateEdge {
    * Mainly needed for populating BGP-LS's TED before the main test run within
    * the test suite.
    */
-  explicit operator BApiLinkStateUpdate() const;
+  explicit operator BApiLinkStateUpdate<LinkStateAttributes>() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
                                    destination_node, source, destination)
@@ -325,25 +340,40 @@ namespace Model {
  * this implementation. The original message data structure is specific the
  * Zebra API's Opaque message system.
  */
+template <AttrPref T>
 struct BApiLinkStateUpdate {
   BEvent event;
   LinkStateNodeId remote;
-  DataVar data;
+  T data;
+
+  friend inline void to_json(nlohmann::json& j,
+                             const BApiLinkStateUpdate& msg) {
+    j = nlohmann::json{{"event", msg.event}, {"data", msg.data}};
+
+    if (msg.remote != LinkStateNodeId{}) {
+      j["remote"] = msg.remote;
+    }
+  }
+  friend inline void from_json(const nlohmann::json& j,
+                               BApiLinkStateUpdate& msg) {
+    j.at("event").get_to(msg.event);
+    j.at("data").get_to(msg.data);
+
+    if (j.contains("remote")) {
+      j.at("remote").get_to(msg.remote);
+    }
+  }
 };
-inline void to_json(nlohmann::json& j, const BApiLinkStateUpdate& msg) {
-  j = nlohmann::json{{"event", msg.event}, {"data", msg.data}};
 
-  if (msg.remote != LinkStateNodeId{}) {
-    j["remote"] = msg.remote;
-  }
-}
-inline void from_json(const nlohmann::json& j, BApiLinkStateUpdate& msg) {
-  j.at("event").get_to(msg.event);
-  j.at("data").get_to(msg.data);
-
-  if (j.contains("remote")) {
-    j.at("remote").get_to(msg.remote);
-  }
+inline LinkStateEdge::operator BApiLinkStateUpdate<LinkStateAttributes>()
+    const {
+  BApiLinkStateUpdate<LinkStateAttributes> message{
+      .event = BEvent::UPDATE,
+      .remote = this->destination_node,
+      .data = {.adv = this->source_node,
+               .local = this->source,
+               .remote = this->destination}};
+  return message;
 }
 
 /**
@@ -372,33 +402,39 @@ inline void from_json(const nlohmann::json& j, BgpLsLinkState& ls) {
 /**
  * @brief Model test case containing initial state, transition, and final state.
  */
+template <AttrPref T>
 struct TestCase {
   int test_id;
-  std::string op;  // currently always "api_bgp_ls_edge_update"
+  std::string op;
   BgpLsLinkState initial_state;
-  BApiLinkStateUpdate api_param;
+  BApiLinkStateUpdate<T> api_param;
   BgpLsLinkState final_state;
   // TODO "UpdateMessage" key
+
+  friend inline void to_json(nlohmann::json& j, const TestCase<T>& tc) {
+    j = nlohmann::json{{"TestId", tc.test_id},
+                       {"Op", tc.op},
+                       {"InitialState", tc.initial_state},
+                       {"ApiParam", tc.api_param},
+                       {"FinalState", tc.final_state}};
+  }
+  friend inline void from_json(const nlohmann::json& j, TestCase<T>& tc) {
+    j.at("TestId").get_to(tc.test_id);
+    j.at("Op").get_to(tc.op);
+    j.at("InitialState").get_to(tc.initial_state);
+    j.at("ApiParam").get_to(tc.api_param);
+    j.at("FinalState").get_to(tc.final_state);
+  }
 };
-inline void to_json(nlohmann::json& j, const TestCase& tc) {
-  j = nlohmann::json{{"TestId", tc.test_id},
-                     {"Op", tc.op},
-                     {"InitialState", tc.initial_state},
-                     {"ApiParam", tc.api_param},
-                     {"FinalState", tc.final_state}};
-}
-inline void from_json(const nlohmann::json& j, TestCase& tc) {
-  j.at("TestId").get_to(tc.test_id);
-  j.at("Op").get_to(tc.op);
-  j.at("InitialState").get_to(tc.initial_state);
-  j.at("ApiParam").get_to(tc.api_param);
-  j.at("FinalState").get_to(tc.final_state);
-}
+
+using AttrVec = std::vector<TestCase<LinkStateAttributes>>;
+using PrefVec = std::vector<TestCase<LinkStatePrefix>>;
 
 /**
  * @brief `TestCase` objects used in the Google Test value-parameterized tests.
  */
-inline std::vector<TestCase> testCases;
+inline AttrVec linkTestCases;
+inline PrefVec prefixTestCases;
 
 /**
  * @brief Prints information about `TestCase` instances.
@@ -409,20 +445,38 @@ inline std::vector<TestCase> testCases;
  * `AbslStringify` is an alternative function that Google Test uses in the same
  * manner.
  */
-inline void PrintTo(const TestCase& tc, std::ostream* os) {
-  std::string type;
-  if (std::holds_alternative<LinkStateAttributes>(tc.api_param.data)) {
-    type = "attributes";
-  } else if (std::holds_alternative<LinkStatePrefix>(tc.api_param.data)) {
-    type = "prefix";
-  } else {
-    type = "undefined";
-  }
-
-  *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << ", Type: " << type
-      << " }";
+template <AttrPref T>
+inline void PrintTo(const TestCase<T>& tc, std::ostream* os) {
+  *os << "{ ID: " << tc.test_id << ", Op: " << tc.op << " }";
 }
 
 }  // namespace Model
+
+namespace nlohmann {
+
+#define COND_API_TYPE_OF(T)                                          \
+  val.contains("ApiParam") && val.at("ApiParam").contains("data") && \
+      val.at("ApiParam").at("data").value("type", "") == T
+
+template <>
+struct adl_serializer<Model::AttrVec> {
+  static void to_json(json& j, const Model::AttrVec& vec) {
+    j = json::array();
+    for (const Model::TestCase<Model::LinkStateAttributes>& tc : vec) {
+      json obj = tc;
+      j.push_back(obj);
+    }
+  }
+
+  static void from_json(const json& j, Model::AttrVec& vec) {
+    for (const json& val : j) {
+      if (COND_API_TYPE_OF(Model::JSON_TYPE_ATTRIBUTES)) {
+        vec.push_back(val.get<Model::TestCase<Model::LinkStateAttributes>>());
+      }
+    }
+  }
+};
+
+}  // namespace nlohmann
 
 #endif  // COMMON_DATA_H
