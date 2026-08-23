@@ -9,7 +9,7 @@
 
 #include "bgpd_env.h"
 #include "common_data.h"
-#include "test_bgp_ls_edge_update.h"
+#include "utils.hpp"
 
 /**
  * Entrypoint for Google Test execution. Before initializing the testing
@@ -28,13 +28,13 @@ int main(int argc, char** argv) {
   std::ifstream raw(jsonPath);
 
   nlohmann::json data = nlohmann::json::parse(raw);
-  Model::linkTestCases =
-      data.get<std::vector<Model::TestCase<Model::LinkStateAttributes>>>();
+  Model::linkTestCases = data.get<Model::AttrVec>();
+  Model::prefixTestCases = data.get<Model::PrefVec>();
 
   std::vector<std::string_view> args(argv, argv + argc);
   for (const auto& arg : args) {
     if (arg == "--debug" || arg == "-d") {
-      Model::EdgeTest::SetDebugMode(true);
+      Model::TestConfig::DebugMode = true;
     }
   }
 

@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 /**
- * Forward-declaration for `bridge_link_exists_nlri`.
+ * Forward-declaration for `bridge_nlri_exists`.
  */
 struct bgp_ls_nlri;
 
@@ -91,17 +91,16 @@ void bridge_show_table(struct sbuf* sbuf);
 bool bridge_edge_exists_ted(struct ls_attributes* attr);
 
 /**
- * @brief Checks to see if a link NLRI exists within the BGP instance's RIB.
+ * @brief Checks to see if an NLRI exists within the BGP instance's RIB.
  *
- * This function checks the RIB for a link NLRI corresponding to the NLRI
- * passed.
+ * This function checks the RIB for an NLRI of any type corresponding to the
+ * NLRI passed.
  *
- * @param nlri      Link NLRI corresponding to the link to check. Represents a
- *                      generic BGP-LS NLRI; however, the value passed should
- *                      point to an NLRI struct with the link parameter filled.
+ * @param nlri      NLRI corresponding to the link-state information to check.
+ *                      Represents a generic BGP-LS NLRI.
  * @return          True if the NLRI exists; false otherwise.
  */
-bool bridge_link_exists_nlri(struct bgp_ls_nlri* nlri);
+bool bridge_nlri_exists(struct bgp_ls_nlri* nlri);
 
 /**
  * @brief Checks to see if the BGP-LS TED and RIB table are empty.

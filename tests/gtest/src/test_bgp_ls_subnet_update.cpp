@@ -12,22 +12,21 @@
 
 namespace Model {
 
-class EdgeTest : public LinkStateTest<LinkStateAttributes, ls_attributes> {};
+class SubnetTest : public LinkStateTest<LinkStatePrefix, ls_prefix> {};
 
-TEST_P(EdgeTest, ValidateEdgeUpdate) {
+TEST_P(SubnetTest, ValidateSubnetUpdate) {
   // Arrange
   TestCase tc = GetParam();
 
+  std::size_t delim = tc.api_param.data.prefix.find("/");
+  std::string addr = tc.api_param.data.prefix.substr(0, delim);
+
   if (IsSysIdUnspecified(tc.api_param.data.adv.iso_sys_id.c_str()) ||
-      IsSysIdUnspecified(tc.api_param.remote.iso_sys_id.c_str()) ||
-      IsIpv6Unspecified(tc.api_param.data.local.c_str()) ||
-      IsIpv6Unspecified(tc.api_param.data.remote.c_str())) {
-    GTEST_SKIP() << "[ls_attr]: test " << tc.test_id
+      IsIpv6Unspecified(addr.c_str())) {
+    GTEST_SKIP() << "[ls_pref]: test " << tc.test_id
                  << " provides no meaningful input.";
   }
 
-  // Note that for arrange, we also want to place TED entries before the one
-  // we actually want to test
   ArrangeInitialState(tc.initial_state.rib);
   VerifyNlri(tc.initial_state.rib);
 
@@ -45,8 +44,9 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
 
 // supplies a custom ID generator based on the TestId field in JSON
 INSTANTIATE_TEST_SUITE_P(
-    CrossHairCoverageTestCases, EdgeTest, ::testing::ValuesIn(linkTestCases),
-    [](const ::testing::TestParamInfo<EdgeTest::ParamType>& info) {
+    CrossHairCoverageTestCases, SubnetTest,
+    ::testing::ValuesIn(prefixTestCases),
+    [](const ::testing::TestParamInfo<SubnetTest::ParamType>& info) {
       return std::to_string(info.param.test_id);
     });
 

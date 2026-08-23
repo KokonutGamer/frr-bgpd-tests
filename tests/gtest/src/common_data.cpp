@@ -57,18 +57,36 @@ BgpLsPrefixNlri::operator LinkState::PrefixNlri() const {
 
   inet_pton(AF_INET6, addr.c_str(), &nlri.prefix.prefix.u.prefix6);
 
-  // TODO verify this is what FRR generates
-  nlri.prefix.bgpRT = LinkState::BgpRouteType::LOCAL;
-
   // must set valid flags
   SET_FLAG(nlri.local.tlvs,
            std::to_underlying(LinkState::NodeDescTLV::IGP_ROUTER_BIT));
   SET_FLAG(nlri.prefix.tlvs,
            std::to_underlying(LinkState::PrefixDescTLV::IP_REACH_BIT));
-  SET_FLAG(nlri.prefix.tlvs,
-           std::to_underlying(LinkState::PrefixDescTLV::BGP_ROUTE_TYPE_BIT));
 
   return nlri;
+}
+
+BgpLsLinkNlri::operator BApiLinkStateUpdate<LinkStateAttributes>() const {
+  uint8_t level = static_cast<uint8_t>(LinkState::Protocol::ISIS_L1);
+
+  BApiLinkStateUpdate<LinkStateAttributes> message{
+      .event = BEvent::UPDATE,
+      .remote = {.iso_sys_id = this->destination.igp_router_id, .level = level},
+      .data = {
+          .adv = {.iso_sys_id = this->source.igp_router_id, .level = level},
+          .local = this->link.interface,
+          .remote = this->link.neighbor}};
+  return message;
+}
+
+BgpLsPrefixNlri::operator BApiLinkStateUpdate<LinkStatePrefix>() const {
+  BApiLinkStateUpdate<LinkStatePrefix> message{
+      .event = BEvent::UPDATE,
+      .data = {
+          .adv = {.iso_sys_id = this->local_node.igp_router_id,
+                  .level = static_cast<uint8_t>(LinkState::Protocol::ISIS_L1)},
+          .prefix = this->prefix.prefix}};
+  return message;
 }
 
 }  // namespace Model
