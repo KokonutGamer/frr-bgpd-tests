@@ -18,6 +18,10 @@ using addr_t = std::string;
 
 namespace Model {
 
+/**
+ * @brief JSON type strings used for converting JSON objects to C++ structs.
+ */
+
 const char* const JSON_TYPE_EDGE = "edge";
 const char* const JSON_TYPE_SUBNET = "subnet";
 const char* const JSON_TYPE_LINK_NLRI = "link_nlri";
@@ -81,6 +85,27 @@ struct BgpLsPrefix {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsPrefix, bgp_route_type, prefix)
 
 /**
+ * @brief Forward declarations for template parameters and constraints.
+ */
+struct LinkStateAttributes;
+struct LinkStatePrefix;
+
+/**
+ * @brief Template constraint for `LinkStateAttributes` and `LinkStatePrefix`.
+ *
+ * Ensures template classes, structs and functions defined with a `AttrPref`
+ * parameter must either be a `LinkStateAttributes` or `LinkStatePrefix`. This
+ * concept is defined separately to allow extensions for potentially other types
+ * (e.g. `LinkStateNode`).
+ */
+template <typename T>
+concept AttrPref =
+    std::same_as<T, LinkStateAttributes> || std::same_as<T, LinkStatePrefix>;
+
+template <AttrPref T>
+struct BApiLinkStateUpdate;
+
+/**
  * @brief Link-state link Network Layer Reachability Information (NLRI).
  *
  * This data structure is a trimmed version of FRR's link NLRI. Because this
@@ -107,6 +132,14 @@ struct BgpLsLinkNlri {
    * use the C API in C++ code.
    */
   explicit operator LinkState::LinkNlri() const;
+
+  /**
+   * @brief Converts `BgpLsLinkNlri` to `BApiLinkStateUpdate`.
+   *
+   * Mainly needed for populating BGP-LS's TED before the main test run within
+   * the test suite.
+   */
+  explicit operator BApiLinkStateUpdate<LinkStateAttributes>() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsLinkNlri, source, destination, link)
 
@@ -137,6 +170,14 @@ struct BgpLsPrefixNlri {
    * use the C API in C++ code.
    */
   explicit operator LinkState::PrefixNlri() const;
+
+  /**
+   * @brief Converts `BgpLsPrefixNlri` to `BApiLinkStateUpdate`.
+   *
+   * Mainly needed for populating BGP-LS's TED before the main test run within
+   * the test suite.
+   */
+  explicit operator BApiLinkStateUpdate<LinkStatePrefix>() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BgpLsPrefixNlri, local_node, prefix)
 
@@ -156,19 +197,6 @@ struct LinkStateNodeId {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateNodeId, iso_sys_id, level)
 
-struct LinkStateAttributes;
-struct LinkStatePrefix;
-
-/**
- * @brief Template constraint for `LinkStateAttributes` and `LinkStatePrefix`.
- */
-template <typename T>
-concept AttrPref =
-    std::same_as<T, LinkStateAttributes> || std::same_as<T, LinkStatePrefix>;
-
-template <AttrPref T>
-struct BApiLinkStateUpdate;
-
 /**
  * @brief Unidirectional path between two nodes in a network.
  *
@@ -183,14 +211,6 @@ struct LinkStateEdge {
   LinkStateNodeId destination_node;
   addr_t source;
   addr_t destination;
-
-  /**
-   * @brief Converts `LinkStateEdge` to `BApiLinkStateUpdate`.
-   *
-   * Mainly needed for populating BGP-LS's TED before the main test run within
-   * the test suite.
-   */
-  explicit operator BApiLinkStateUpdate<LinkStateAttributes>() const;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
                                    destination_node, source, destination)
@@ -250,21 +270,24 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStatePrefix, adv, prefix)
 enum class BEvent : uint8_t { UNDEF = 0, SYNC, ADD, UPDATE, DELETE };
 
 /**
- * @brief `BApiLinkStateUpdate` data variant.
- *
- * This type alias is used by a custom ADL serializer and as a member in
- * `BApiLinkStateUpdate` to indicate the payload as either a
- * `LinkStateAttributes` or `LinkStatePrefix` struct.
- */
-using DataVar = std::variant<LinkStateAttributes, LinkStatePrefix>;
-
-/**
  * @brief `BgpLsLinkState` TED variant.
+ *
+ * This type alias is used by a custom ADL serializer and as a template paramter
+ * for a `std::vector` member in `BgpLsLinkState`. A variable of type `TedVar`
+ * holds either a `LinkStateEdge` or a `LinkStateSubnet`. Convenient for usage
+ * in functions using this specific variant as shorthand for the fully-qualified
+ * name.
  */
 using TedVar = std::variant<LinkStateEdge, LinkStateSubnet>;
 
 /**
- * @brief `BgpLsPrefixNlri` RIB variant.
+ * @brief `BgpLsLinkState` RIB variant.
+ *
+ * This type alaias is used by a custom ADL serializer and as a template
+ * parameter for a `std::vector` member in `BgpLsLinkState`. A variable of type
+ * `RibVar` holds either a `BgpLsLinkNlri` or a `BgpLsPrefixNlri`. Convenient
+ * for usage in functions using this specific variant as shorthand for the
+ * fully-qualified name.
  */
 using RibVar = std::variant<BgpLsLinkNlri, BgpLsPrefixNlri>;
 }  // namespace Model
@@ -277,24 +300,6 @@ namespace nlohmann {
   }
 
 /**
- * @brief Custom Argument-Dependent Lookup (ADL) serializer for
- * `Model::DataVar`.
- */
-template <>
-struct adl_serializer<Model::DataVar> {
-  VAR_TO_JSON(Model::DataVar)
-
-  static void from_json(const json& j, Model::DataVar& var) {
-    std::string type = j.at("type").get<std::string>();
-
-    if (type == "attributes") var = j.get<Model::LinkStateAttributes>();
-    if (type == "prefix") var = j.get<Model::LinkStatePrefix>();
-
-    std::runtime_error("[Model::DataVar]: JSON is of unknown type.");
-  }
-};
-
-/**
  * @brief Custom Argument-Dependent Lookup (ADL) serializer for `Model::TedVar`.
  */
 template <>
@@ -304,8 +309,8 @@ struct adl_serializer<Model::TedVar> {
   static void from_json(const json& j, Model::TedVar& var) {
     std::string type = j.at("type").get<std::string>();
 
-    if (type == "edge") var = j.get<Model::LinkStateEdge>();
-    if (type == "subnet") var = j.get<Model::LinkStateSubnet>();
+    if (type == Model::JSON_TYPE_EDGE) var = j.get<Model::LinkStateEdge>();
+    if (type == Model::JSON_TYPE_SUBNET) var = j.get<Model::LinkStateSubnet>();
 
     std::runtime_error("[Model::TedVar]: JSON is of unknown type.");
   }
@@ -321,8 +326,9 @@ struct adl_serializer<Model::RibVar> {
   static void from_json(const json& j, Model::RibVar& var) {
     std::string type = j.at("type").get<std::string>();
 
-    if (type == "link_nlri") var = j.get<Model::BgpLsLinkNlri>();
-    if (type == "prefix_nlri") var = j.get<Model::BgpLsPrefixNlri>();
+    if (type == Model::JSON_TYPE_LINK_NLRI) var = j.get<Model::BgpLsLinkNlri>();
+    if (type == Model::JSON_TYPE_PREFIX_NLRI)
+      var = j.get<Model::BgpLsPrefixNlri>();
 
     std::runtime_error("[Model::RibVar]: JSON is of unknown type.");
   }
@@ -364,17 +370,6 @@ struct BApiLinkStateUpdate {
     }
   }
 };
-
-inline LinkStateEdge::operator BApiLinkStateUpdate<LinkStateAttributes>()
-    const {
-  BApiLinkStateUpdate<LinkStateAttributes> message{
-      .event = BEvent::UPDATE,
-      .remote = this->destination_node,
-      .data = {.adv = this->source_node,
-               .local = this->source,
-               .remote = this->destination}};
-  return message;
-}
 
 /**
  * @brief Link-state of the BGP instance.
@@ -458,6 +453,10 @@ namespace nlohmann {
   val.contains("ApiParam") && val.at("ApiParam").contains("data") && \
       val.at("ApiParam").at("data").value("type", "") == T
 
+/**
+ * @brief Custom Argument-Dependent Lookup (ADL) serializer for
+ * `Model::AttrVec`.
+ */
 template <>
 struct adl_serializer<Model::AttrVec> {
   static void to_json(json& j, const Model::AttrVec& vec) {
@@ -472,6 +471,29 @@ struct adl_serializer<Model::AttrVec> {
     for (const json& val : j) {
       if (COND_API_TYPE_OF(Model::JSON_TYPE_ATTRIBUTES)) {
         vec.push_back(val.get<Model::TestCase<Model::LinkStateAttributes>>());
+      }
+    }
+  }
+};
+
+/**
+ * @brief Custom Argument-Dependent Lookup (ADL) serializer for
+ * `Model::PrefVec`.
+ */
+template <>
+struct adl_serializer<Model::PrefVec> {
+  static void to_json(json& j, const Model::PrefVec& vec) {
+    j = json::array();
+    for (const Model::TestCase<Model::LinkStatePrefix>& tc : vec) {
+      json obj = tc;
+      j.push_back(obj);
+    }
+  }
+
+  static void from_json(const json& j, Model::PrefVec& vec) {
+    for (const json& val : j) {
+      if (COND_API_TYPE_OF(Model::JSON_TYPE_PREFIX)) {
+        vec.push_back(val.get<Model::TestCase<Model::LinkStatePrefix>>());
       }
     }
   }

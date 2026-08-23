@@ -15,6 +15,16 @@ static constexpr int ISIS_SYS_ID_CHAR_LEN = 14;
 namespace Model {
 
 /**
+ * @brief Global configuration class for runtime constants.
+ */
+class TestConfig {
+ public:
+  TestConfig() = delete;
+
+  inline static bool DebugMode = false;
+};
+
+/**
  * @brief Converts the string representation of an ISO sys ID to a canonical
  * form.
  *

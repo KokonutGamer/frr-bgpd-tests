@@ -127,7 +127,11 @@ void bridge_send_message(struct stream *s, uint8_t msg_type) {
 static const char *ls_node_id_to_text(struct ls_node_id lnid, char *str,
                                       size_t size) {
   if (lnid.origin == ISIS_L1 || lnid.origin == ISIS_L2)
-    snprintfrr(str, size, "%pSY", lnid.id.iso.sys_id);
+    snprintfrr(str, size, "%02x%02x.%02x%02x.%02x%02x", lnid.id.iso.sys_id[0],
+               lnid.id.iso.sys_id[1], lnid.id.iso.sys_id[2],
+               lnid.id.iso.sys_id[3], lnid.id.iso.sys_id[4],
+               lnid.id.iso.sys_id[5]);
+
   else
     snprintfrr(str, size, "%pI4", &lnid.id.ip.addr);
 
@@ -197,6 +201,18 @@ static void edge_to_text(const struct ls_edge *const edge, struct sbuf *sbuf) {
   sbuf_push(sbuf, 4, "Remote IPv6 address: %pI6\n", &attr->standard.remote6);
 }
 
+static void subnet_to_text(const struct ls_subnet *const subnet,
+                           struct sbuf *sbuf) {
+  struct ls_prefix *pref = subnet->ls_pref;
+  char buf[INET6_BUFSIZ];
+
+  sbuf_push(sbuf, 2, "Subnet: %pFX", &subnet->key);
+  ls_node_id_to_text(pref->adv, buf, INET6_BUFSIZ);
+  sbuf_push(sbuf, 0, "\tAdv. Vertex: %s", buf);
+  sbuf_push(sbuf, 0, "\tMetric: %d", pref->metric);
+  sbuf_push(sbuf, 0, "\tStatus: %s\n", status2txt[subnet->status]);
+}
+
 void bridge_show_ted(struct sbuf *sbuf) {
   struct ls_vertex *vertex;
   frr_each(vertices, &bgp->ls_info->ted->vertices, vertex) {
@@ -212,6 +228,14 @@ void bridge_show_ted(struct sbuf *sbuf) {
       continue;
     }
     edge_to_text(edge, sbuf);
+  }
+
+  struct ls_subnet *subnet;
+  frr_each(subnets, &bgp->ls_info->ted->subnets, subnet) {
+    if (!subnet) {
+      continue;
+    }
+    subnet_to_text(subnet, sbuf);
   }
 }
 
@@ -255,7 +279,11 @@ bool bridge_edge_exists_ted(struct ls_attributes *attr) {
          ls_vertex_same(src_edge->destination, dst_edge->source);
 }
 
-bool bridge_link_exists_nlri(struct bgp_ls_nlri *nlri) {
+bool bridge_subnet_exists_ted(struct ls_prefix *pref) {
+  return ls_find_subnet(bgp->ls_info->ted, &pref->pref) != NULL;
+}
+
+bool bridge_nlri_exists(struct bgp_ls_nlri *nlri) {
   struct bgp_ls_nlri *ret = bgp_ls_nlri_lookup(&bgp->ls_info->nlri_hash, nlri);
   return ret != NULL;
 }
