@@ -36,7 +36,7 @@ FetchContent_MakeAvailable(json)
 # libfrr.a, libbgp.a, and librfp.a grouped (rather not deal with dependency ordering) 
 find_library(LIBFRR
     NAMES libfrr.a
-    HINTS /lib
+    HINTS /home/frr/frr/lib/.libs
     REQUIRED
 )
 find_library(LIBBGP

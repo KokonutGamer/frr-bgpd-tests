@@ -19,6 +19,7 @@ compile_commands.json
 Thumbs.db
 
 # --- Logs ---
+coverage/
 logs/
 
 # --- Misc ---
