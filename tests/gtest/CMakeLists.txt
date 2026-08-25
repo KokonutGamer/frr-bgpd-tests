@@ -36,7 +36,7 @@ FetchContent_MakeAvailable(json)
 # libfrr.a, libbgp.a, and librfp.a grouped (rather not deal with dependency ordering) 
 find_library(LIBFRR
     NAMES libfrr.a
-    HINTS /lib
+    HINTS /home/frr/frr/lib/.libs
     REQUIRED
 )
 find_library(LIBBGP
@@ -97,6 +97,13 @@ target_compile_options(model_tests PRIVATE
                                     # struct mgmt_msg_cfg_reply, struct mgmt_msg_cfg_apply_req, struct
                                     # mgmt_msg_cfg_apply_reply)
 )
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # coverage for model tests
+    target_compile_options(model_tests PRIVATE --coverage)
+    target_link_options(model_tests PRIVATE --coverage)
+endif()
+
 target_compile_definitions(model_tests PRIVATE
     "MODEL_JSON_PATH=\"${CMAKE_SOURCE_DIR}/tests/linkstate_update_formatted.json\""
 )

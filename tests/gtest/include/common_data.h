@@ -226,11 +226,12 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateEdge, asn, source_node,
  * IGP-agnostic link-state representation of the network.
  */
 struct LinkStateAttributes {
-  LinkStateNodeId adv;
   addr_t local;
   addr_t remote;
+  LinkStateNodeId adv_node;
+  LinkStateNodeId remote_node;
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateAttributes, adv, local, remote)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkStateAttributes, local, remote, adv_node, remote_node)
 
 /**
  * @brief Subnet represented by a single advertised prefix in a network.
@@ -349,26 +350,9 @@ namespace Model {
 template <AttrPref T>
 struct BApiLinkStateUpdate {
   BEvent event;
-  LinkStateNodeId remote;
   T data;
 
-  friend inline void to_json(nlohmann::json& j,
-                             const BApiLinkStateUpdate& msg) {
-    j = nlohmann::json{{"event", msg.event}, {"data", msg.data}};
-
-    if (msg.remote != LinkStateNodeId{}) {
-      j["remote"] = msg.remote;
-    }
-  }
-  friend inline void from_json(const nlohmann::json& j,
-                               BApiLinkStateUpdate& msg) {
-    j.at("event").get_to(msg.event);
-    j.at("data").get_to(msg.data);
-
-    if (j.contains("remote")) {
-      j.at("remote").get_to(msg.remote);
-    }
-  }
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(BApiLinkStateUpdate, event, data)
 };
 
 /**

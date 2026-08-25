@@ -11,18 +11,36 @@
             "hidden": true,
             "binaryDir": "${sourceDir}/bin/build/${presetName}",
             "installDir": "${sourceDir}/bin/install/${presetName}",
-            "generator": "Ninja",
             "cacheVariables": {
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-                "CMAKE_C_COMPILER": "clang",
-                "CMAKE_CXX_COMPILER": "clang++",
                 "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
-            "name": "linux-x64-debug",
-            "displayName": "Linux x64 Debug",
+            "name": "clang-debug",
+            "displayName": "Clang Debug",
             "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "gcc-debug",
+            "displayName": "GCC Debug",
+            "inherits": "base",
+            "generator": "Unix Makefiles",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            },
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
@@ -32,14 +50,25 @@
     ],
     "buildPresets": [
         {
-            "name": "linux-x64-debug",
-            "configurePreset": "linux-x64-debug"
+            "name": "clang-debug",
+            "configurePreset": "clang-debug"
+        },
+        {
+            "name": "gcc-debug",
+            "configurePreset": "gcc-debug"
         }
     ],
     "testPresets": [
         {
-            "name": "linux-x64-debug",
-            "configurePreset": "linux-x64-debug",
+            "name": "clang-debug",
+            "configurePreset": "clang-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "gcc-debug",
+            "configurePreset": "gcc-debug",
             "output": {
                 "outputOnFailure": true
             }

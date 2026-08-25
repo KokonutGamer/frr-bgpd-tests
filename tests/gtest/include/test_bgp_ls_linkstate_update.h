@@ -299,11 +299,11 @@ class LinkStateTest : public testing::TestWithParam<TestCase<T>> {
     // interoperability between level 1 and level 2 nodes (specifically 1/2
     // nodes); check this again in the future
     ls_node_id remote_node_id{};
-    NodeIdToFrr(apiMessage.remote, remote_node_id);
+    NodeIdToFrr(apiMessage.data.remote_node, remote_node_id);
 
     // TODO same as remote node - see above
     ls_node_id adv_node_id{};
-    NodeIdToFrr(apiMessage.data.adv, adv_node_id);
+    NodeIdToFrr(apiMessage.data.adv_node, adv_node_id);
 
     AttributesToFrr(apiMessage.data, adv_node_id, attr);
 
