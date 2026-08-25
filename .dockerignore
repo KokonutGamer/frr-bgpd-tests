@@ -7,3 +7,6 @@
 **/.libs
 docker/alpine/pkgs
 docker/centos/pkgs
+
+# BGP-LS Google Test Suite
+tests/gtest/

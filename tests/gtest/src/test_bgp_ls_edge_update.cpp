@@ -18,8 +18,8 @@ TEST_P(EdgeTest, ValidateEdgeUpdate) {
   // Arrange
   TestCase tc = GetParam();
 
-  if (IsSysIdUnspecified(tc.api_param.data.adv.iso_sys_id.c_str()) ||
-      IsSysIdUnspecified(tc.api_param.remote.iso_sys_id.c_str()) ||
+  if (IsSysIdUnspecified(tc.api_param.data.adv_node.iso_sys_id.c_str()) ||
+      IsSysIdUnspecified(tc.api_param.data.remote_node.iso_sys_id.c_str()) ||
       IsIpv6Unspecified(tc.api_param.data.local.c_str()) ||
       IsIpv6Unspecified(tc.api_param.data.remote.c_str())) {
     GTEST_SKIP() << "[ls_attr]: test " << tc.test_id

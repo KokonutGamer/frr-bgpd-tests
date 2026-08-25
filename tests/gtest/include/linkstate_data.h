@@ -166,7 +166,7 @@ struct PrefixDesc {
   uint16_t mtId;
   OspfRouteType ospfRT;
   BgpRouteType bgpRT;
-  prefix prefix;
+  prefix pref;
 };
 
 /**

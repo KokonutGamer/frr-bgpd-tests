@@ -51,11 +51,11 @@ BgpLsPrefixNlri::operator LinkState::PrefixNlri() const {
   std::size_t pos = pref.find("/");
   std::string addr = pref.substr(0, pos);
 
-  nlri.prefix.prefix = {.family = AF_INET6};
+  nlri.prefix.pref = {.family = AF_INET6};
   std::from_chars(pref.c_str() + pos + 1, pref.c_str() + pref.size(),
-                  nlri.prefix.prefix.prefixlen);
+                  nlri.prefix.pref.prefixlen);
 
-  inet_pton(AF_INET6, addr.c_str(), &nlri.prefix.prefix.u.prefix6);
+  inet_pton(AF_INET6, addr.c_str(), &nlri.prefix.pref.u.prefix6);
 
   // must set valid flags
   SET_FLAG(nlri.local.tlvs,
@@ -71,11 +71,12 @@ BgpLsLinkNlri::operator BApiLinkStateUpdate<LinkStateAttributes>() const {
 
   BApiLinkStateUpdate<LinkStateAttributes> message{
       .event = BEvent::UPDATE,
-      .remote = {.iso_sys_id = this->destination.igp_router_id, .level = level},
-      .data = {
-          .adv = {.iso_sys_id = this->source.igp_router_id, .level = level},
-          .local = this->link.interface,
-          .remote = this->link.neighbor}};
+      .data = {.local = this->link.interface,
+               .remote = this->link.neighbor,
+               .adv_node = {.iso_sys_id = this->source.igp_router_id,
+                            .level = level},
+               .remote_node = {.iso_sys_id = this->destination.igp_router_id,
+                               .level = level}}};
   return message;
 }
 
