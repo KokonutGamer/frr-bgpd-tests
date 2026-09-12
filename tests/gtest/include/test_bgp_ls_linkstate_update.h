@@ -307,20 +307,27 @@ class LinkStateTest : public testing::TestWithParam<TestCase<T>> {
 
     AttributesToFrr(apiMessage.data, adv_node_id, attr);
 
-    struct ls_node* remote_node =
-        ls_node_new(remote_node_id, in_addr{}, attr->standard.remote6);
-    SendNodeMessage(*remote_node, apiMessage.event);
+    // send messages to the BGP instance
 
-    struct ls_node* adv_node =
-        ls_node_new(adv_node_id, in_addr{}, attr->standard.local6);
-    SendNodeMessage(*adv_node, apiMessage.event);
+    if (apiMessage.event == BEvent::DELETE) {
+      SendAttributesMessage(*attr, remote_node_id, apiMessage.event);
+      SendAttributesMessage(*attr, remote_node_id, apiMessage.event, true);
+    } else {
+      struct ls_node* remote_node =
+          ls_node_new(remote_node_id, in_addr{}, attr->standard.remote6);
+      SendNodeMessage(*remote_node, apiMessage.event);
 
-    SendAttributesMessage(*attr, remote_node_id, apiMessage.event);  // forward
-    SendAttributesMessage(*attr, remote_node_id, apiMessage.event,
-                          true);  // reverse
+      struct ls_node* adv_node =
+          ls_node_new(adv_node_id, in_addr{}, attr->standard.local6);
+      SendNodeMessage(*adv_node, apiMessage.event);
 
-    ls_node_del(adv_node);
-    ls_node_del(remote_node);
+      SendAttributesMessage(*attr, remote_node_id, apiMessage.event);
+      SendAttributesMessage(*attr, remote_node_id, apiMessage.event, true);
+
+      ls_node_del(adv_node);
+      ls_node_del(remote_node);
+    }
+
     ls_attributes_del(attr);
   }
 
@@ -344,13 +351,18 @@ class LinkStateTest : public testing::TestWithParam<TestCase<T>> {
 
     PrefixToFrr(apiMessage.data, adv_node_id, pref);
 
-    struct ls_node* adv_node =
-        ls_node_new(adv_node_id, in_addr{}, pref->pref.u.prefix6);
-    SendNodeMessage(*adv_node, apiMessage.event);
+    if (apiMessage.event == BEvent::DELETE) {
+      SendPrefixMessage(*pref, apiMessage.event);
+    } else {
+      struct ls_node* adv_node =
+          ls_node_new(adv_node_id, in_addr{}, pref->pref.u.prefix6);
+      SendNodeMessage(*adv_node, apiMessage.event);
 
-    SendPrefixMessage(*pref, apiMessage.event);
+      SendPrefixMessage(*pref, apiMessage.event);
 
-    ls_node_del(adv_node);
+      ls_node_del(adv_node);
+    }
+
     ls_prefix_del(pref);
   }
 
